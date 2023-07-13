@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
+from math import isfinite
 
 import argparse
 from sys import argv
@@ -105,4 +106,7 @@ for epoch in range(1, 15 + 1):
         for i in optimizer.param_groups:
             i['lr'] = args.lr2
 
-print(loss.item())
+if isfinite(loss.item()):
+    print(loss.item())
+else:
+    print("NaN")

@@ -1,6 +1,6 @@
 import numpy as np
 import subprocess
-from multiprocessing import Pool, TimeoutError
+from multiprocessing import Pool, TimeoutError, Process
 from json import dumps
 
 class ParticleSwarm():
@@ -77,21 +77,18 @@ class Particle():
         velRange = max(dimension) - min(dimension)
         return 0.3 * velRange
 
-    def run(self, progBar = None):
-        args = ["python", "runNetwork.py"]
-        for (key, value) in self.position.items():
-            args.append(key)
-            args.append(str(value))
-        
-        output = subprocess.run(args, capture_output=True)
-        if progBar is not None:
-            progBar.update()
-        result = float(output.stdout)
-        self.update(result)
-        return result
-
-def runParticle(particle):
-    return particle.run()
+def runParticle(particle, progBar = None):
+    args = ["python", "runNetwork.py"]
+    for (key, value) in particle.position.items():
+        args.append(key)
+        args.append(str(value))
+    
+    output = subprocess.run(args, capture_output=True)
+    if progBar is not None:
+        progBar.update()
+    result = float(output.stdout)
+    particle.update(result)
+    return [result, particle]
 
 def main():
     MAX_THREADS = 5
@@ -115,10 +112,13 @@ def main():
         try:
             for run in range(MAX_RUNS):
                 output = np.array([], dtype=np.float32)
+                newParticles = []
                 print(f"Starting run {run}")
                 for out in pool.map(runParticle, swarm.particles):
-                    output = np.append(output, [out])
+                    output = np.append(output, [out[0]])
+                    newParticles.append(out[1])
                 print(f"Run {run} complete")
+                swarm.particles = newParticles
                 # results = np.array([i.results[-1] for i in swarm.particles])
                 print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
                 
