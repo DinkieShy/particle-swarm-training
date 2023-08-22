@@ -10,32 +10,49 @@ class ParticleSwarm():
         self.dimensions = dim # 2d dict of [dimension][0|1] for lower/upper bound
         self.particles = []
 
-    def initialiseSwarm(self):
-        for _ in range(self.count):
-            self.particles.append(Particle(self.dimensions))
+    def initialiseSwarm(self, distribution = None, result = None):
+        self.particles = []
+        if distribution == None:
+            for _ in range(self.count):
+                self.particles.append(Particle(self.dimensions))
+        else:
+            for _ in range(self.count):
+                self.particles.append(Particle(self.dimensions, distribution, result))
+
 
 
 class Particle():
-    def __init__(self, dimensions):
+    def __init__(self, dimensions, distribution = None, result = None):
         self.dimensions = dimensions
         self.position = {} # dict of [dimension][value]
         self.velocity = {}
-        self.momentum = 0.8
-        self.speed = 0.1
+        self.momentum = 0.9
+        self.speed = 0.0001
         self.positions = []
         self.results = []
-        self.changeThreshold = 0.2
+        self.randomGen = np.random.default_rng()
+
+        if distribution != None:
+            self.positions.append(distribution)
+        if result != None:
+            self.results.append(result)
 
         for dim in self.dimensions:
             if isinstance(self.dimensions[dim][0], (int)):
-                self.position[dim] = np.random.randint(self.dimensions[dim][0], self.dimensions[dim][1])
+                if distribution == None:
+                    self.position[dim] = np.random.randint(self.dimensions[dim][0], self.dimensions[dim][1])
+                else:
+                    self.position[dim] = round(self.randomGen.normal(distribution[dim]/float(self.dimensions[dim][1]), 0.25)*self.dimensions[dim][1])
             else:
-                self.position[dim] = np.random.uniform(self.dimensions[dim][0], self.dimensions[dim][1])
+                if distribution == None:
+                    self.position[dim] = np.random.uniform(self.dimensions[dim][0], self.dimensions[dim][1])
+                else:
+                    self.position[dim] = self.randomGen.normal(distribution[dim]/self.dimensions[dim][1], 0.25)*self.dimensions[dim][1]
 
-        # for i in self.dimensions:
-        #     self.velocity[i] = np.random.random()*self.maxReasonableVelocity(self.dimensions[i])
-        #     if np.random.random() > 0.5:
-        #         self.velocity[i] *= -1
+            if self.position[dim] > max(self.dimensions[dim]):
+                self.position[dim] = max(self.dimensions[dim])
+            elif self.position[dim] < min(self.dimensions[dim]):
+                self.position[dim] = min(self.dimensions[dim])
 
     def intCheck(self):
         # parameters that are integers should stay integers
@@ -44,39 +61,15 @@ class Particle():
                 self.position[dim] = round(self.position[dim])
 
     def update(self, result):
-        # self.results.append(result)
-        # self.positions.append(self.position)
-        # if len(self.results) >= 2:
-        #     # After a couple runs, start running gradient descent
-        # 
-        #     resultTheta = self.results[-1] - self.results[-2]
-        #     if resultTheta > self.changeThreshold:
-        #         # result is training loss, so going *up* is bad
-        #         for i in self.velocity:
-        #             if np.random.random() <= 0.3:
-        #                 self.velocity[i] = np.random.random()*self.maxReasonableVelocity(self.dimensions[i])
-        #                 if np.random.random() > 0.5:
-        #                     self.velocity[i] *= -1
-
-        # for i in self.velocity:
-        #     self.position[i] += self.velocity[i]*(0.8+np.random.random()*0.4)
-        #     if self.position[i] > max(self.dimensions[i]):
-        #         self.position[i] = max(self.dimensions[i])
-        #     elif self.position[i] < min(self.dimensions[i]):
-        #         self.position[i] = min(self.dimensions[i])
-
-        #     self.velocity[i] *= self.momentum
-
-        # self.momentum *= self.momentum
-
         newPosition = {}
         for dim in self.position:
+            normalisationFactor = float(self.dimensions[dim][1])
             currentValue = (self.position[dim], result)
-            lastValue = (self.positions[-1][dim], self.results[-1]) if len(self.positions) > 1 else (0, 1)
+            lastValue = (self.positions[-1][dim], self.results[-1]) if len(self.results) > 0 else (1, 1)
 
             gradient = (currentValue[1]-lastValue[1])/(currentValue[0]-lastValue[0]+float_info.epsilon)
 
-            newPosition[dim] = self.position[dim] - gradient*self.speed
+            newPosition[dim] = (currentValue[0] - gradient*self.speed)
 
             if newPosition[dim] > max(self.dimensions[dim]):
                 newPosition[dim] = max(self.dimensions[dim])
@@ -113,7 +106,7 @@ def runParticle(particle, progBar = None):
 
 def main():
     MAX_THREADS = 5
-    MAX_RUNS = 10
+    MAX_RUNS = 50
     PARTICLES = 5
 
     dimensions = {
@@ -128,25 +121,32 @@ def main():
     swarm = ParticleSwarm(dimensions, count=PARTICLES)
 
     swarm.initialiseSwarm()
+    oldParticles = []
 
     with Pool(processes=MAX_THREADS) as pool:
         try:
             for run in range(MAX_RUNS):
                 output = np.array([], dtype=np.float32)
-                newParticles = []
                 print(f"Starting run {run}")
+                newParticles = []
                 for out in pool.map(runParticle, swarm.particles):
                     output = np.append(output, [out[0]])
+                    if run % 5 == 0:
+                        oldParticles.append(out[1])
                     newParticles.append(out[1])
                 print(f"Run {run} complete")
-                swarm.particles = newParticles
-                print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
+                bestResult = output.min()
+                if run % 5 == 0:
+                    swarm.initialiseSwarm(newParticles[np.nonzero(output == bestResult)[0][0]].position, bestResult)
+                else:
+                    swarm.particles = newParticles
+                print(f'max: {output.max()}, min: {bestResult}, mean: {output.mean()}, median: {np.median(output)}')
                 
         except TimeoutError:
             assert False, "Timeout error"
 
     particleResults = []
-    for i in swarm.particles:
+    for i in oldParticles:
         result = {}
         for ii in range(len(i.results)):
             result[ii] = [i.positions[ii], i.results[ii]]
