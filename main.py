@@ -9,28 +9,29 @@ class ParticleSwarm():
         self.count = count
         self.dimensions = dim # 2d dict of [dimension][0|1] for lower/upper bound
         self.particles = []
+        self.randomGen = np.random.default_rng()
 
     def initialiseSwarm(self, distribution = None, result = None):
         self.particles = []
         if distribution == None:
             for _ in range(self.count):
-                self.particles.append(Particle(self.dimensions))
+                self.particles.append(Particle(self.dimensions, int(self.randomGen.random()*1000000)))
         else:
             for _ in range(self.count):
-                self.particles.append(Particle(self.dimensions, distribution, result))
+                self.particles.append(Particle(self.dimensions, int(self.randomGen.random()*1000000), distribution, result))
 
 
 
 class Particle():
-    def __init__(self, dimensions, distribution = None, result = None):
+    def __init__(self, dimensions, randomSeed, distribution = None, result = None):
         self.dimensions = dimensions
         self.position = {} # dict of [dimension][value]
         self.velocity = {}
-        self.momentum = 0.9
         self.speed = 0.0001
+        self.momentum = 0.75
         self.positions = []
         self.results = []
-        self.randomGen = np.random.default_rng()
+        self.randomGen = np.random.default_rng(seed=randomSeed)
 
         if distribution != None:
             self.positions.append(distribution)
@@ -42,17 +43,20 @@ class Particle():
                 if distribution == None:
                     self.position[dim] = np.random.randint(self.dimensions[dim][0], self.dimensions[dim][1])
                 else:
-                    self.position[dim] = round(self.randomGen.normal(distribution[dim]/float(self.dimensions[dim][1]), 0.25)*self.dimensions[dim][1])
+                    self.position[dim] = round(self.randomGen.normal(distribution[dim]/float(self.dimensions[dim][1]), 0.15)*self.dimensions[dim][1])
             else:
                 if distribution == None:
                     self.position[dim] = np.random.uniform(self.dimensions[dim][0], self.dimensions[dim][1])
                 else:
-                    self.position[dim] = self.randomGen.normal(distribution[dim]/self.dimensions[dim][1], 0.25)*self.dimensions[dim][1]
+                    self.position[dim] = self.randomGen.normal(distribution[dim]/self.dimensions[dim][1], 0.15)*self.dimensions[dim][1]
 
             if self.position[dim] > max(self.dimensions[dim]):
                 self.position[dim] = max(self.dimensions[dim])
             elif self.position[dim] < min(self.dimensions[dim]):
                 self.position[dim] = min(self.dimensions[dim])
+        
+        self.dimensionsBeingChanged = [list(self.position.keys())[self.randomGen.integers(0, len(self.position))] for _ in range(3)]
+        print(self.dimensionsBeingChanged)
 
     def intCheck(self):
         # parameters that are integers should stay integers
@@ -63,20 +67,24 @@ class Particle():
     def update(self, result):
         newPosition = {}
         for dim in self.position:
-            normalisationFactor = float(self.dimensions[dim][1])
-            currentValue = (self.position[dim], result)
-            lastValue = (self.positions[-1][dim], self.results[-1]) if len(self.results) > 0 else (1, 1)
+            if dim in self.dimensionsBeingChanged:
+                normalisationFactor = float(self.dimensions[dim][1])
+                currentValue = (self.position[dim]/normalisationFactor, result)
+                lastValue = (self.positions[-1][dim]/normalisationFactor, self.results[-1]) if len(self.results) > 0 else (1, 1)
 
-            gradient = (currentValue[1]-lastValue[1])/(currentValue[0]-lastValue[0]+float_info.epsilon)
+                gradient = (currentValue[1]-lastValue[1])/(currentValue[0]-lastValue[0]+float_info.epsilon)
 
-            newPosition[dim] = (currentValue[0] - gradient*self.speed)
+                newPosition[dim] = (currentValue[0] - gradient*self.speed)*normalisationFactor
 
-            if newPosition[dim] > max(self.dimensions[dim]):
-                newPosition[dim] = max(self.dimensions[dim])
-            elif newPosition[dim] < min(self.dimensions[dim]):
-                newPosition[dim] = min(self.dimensions[dim])
+                if newPosition[dim] > max(self.dimensions[dim]):
+                    newPosition[dim] = max(self.dimensions[dim])
+                elif newPosition[dim] < min(self.dimensions[dim]):
+                    newPosition[dim] = min(self.dimensions[dim])
+            else:
+                newPosition[dim] = self.position[dim]
 
         self.speed *= self.momentum
+
         self.positions.append(self.position)
         self.results.append(result)
         self.position = newPosition
@@ -107,7 +115,7 @@ def runParticle(particle, progBar = None):
 def main():
     MAX_THREADS = 5
     MAX_RUNS = 50
-    PARTICLES = 5
+    PARTICLES = 20
 
     dimensions = {
         "--lr": (0.0005, 0.005),
