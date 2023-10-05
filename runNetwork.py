@@ -11,12 +11,12 @@ from sys import argv
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, 3, 1)
-        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.conv1 = nn.Conv2d(1, 16, 3, 1)
+        self.conv2 = nn.Conv2d(16, 32, 3, 1)
         self.dropout1 = nn.Dropout(0.25)
-        self.dropout2 = nn.Dropout(0.5)
-        self.fc1 = nn.Linear(9216, 128)
-        self.fc2 = nn.Linear(128, 10)
+        self.dropout2 = nn.Dropout(0.25)
+        self.fc1 = nn.Linear(4608, 64)
+        self.fc2 = nn.Linear(64, 10)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -53,6 +53,20 @@ def train(args, model, device, train_loader, optimizer, epoch):
         
     return loss
 
+def test(model, test_loader, device):
+    model.eval()
+
+    correct = 0
+    total = len(test_loader.dataset)
+
+    with torch.no_grad():
+        for image, label in test_loader:
+            image, label = image.to(device), label.to(device)
+            prediction = model(image)
+            correct += (prediction.argmax(1) == label).type(torch.float).sum().item()
+
+    print(f"Correct percentage: {(100*(correct/total)):>0.2f}%")
+
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
 parser.add_argument('--batch-size', type=int, default=64, metavar='N',
@@ -71,6 +85,8 @@ parser.add_argument('--decay', type=float, default=0.00001, metavar='WD',
                     help="weight decay value")
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
+parser.add_argument('--test', type=bool, default=False, metavar='T',
+                    help='run on test set (default: False)')
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
@@ -96,7 +112,12 @@ dataset1 = datasets.MNIST('../data', train=True, download=True,
                     transform=transform)
 train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
 
+dataset2 = datasets.MNIST('../data', train=False, download=True,
+                    transform=transform)
+test_loader = torch.utils.data.DataLoader(dataset2,**train_kwargs)
+
 model = Net().to(device)
+
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
 # for epoch in range(1, args.epochs + 1):
@@ -110,3 +131,6 @@ if isfinite(loss.item()):
     print(loss.item())
 else:
     print("NaN")
+
+if args.test:
+    test(model, test_loader, device)

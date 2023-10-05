@@ -15,20 +15,19 @@ class ParticleSwarm():
         self.particles = []
         if distribution == None:
             for _ in range(self.count):
-                self.particles.append(Particle(self.dimensions, int(self.randomGen.random()*1000000)))
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000)))
         else:
             for _ in range(self.count):
-                self.particles.append(Particle(self.dimensions, int(self.randomGen.random()*1000000), distribution, result))
-
-
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), distribution, result))
 
 class Particle():
-    def __init__(self, dimensions, randomSeed, distribution = None, result = None):
+    def __init__(self, idString, dimensions, randomSeed, distribution = None, result = None):
+        self.id = idString
         self.dimensions = dimensions
         self.position = {} # dict of [dimension][value]
         self.velocity = {}
         self.speed = 0.0001
-        self.momentum = 0.75
+        self.momentum = 0.9
         self.positions = []
         self.results = []
         self.randomGen = np.random.default_rng(seed=randomSeed)
@@ -38,25 +37,28 @@ class Particle():
         if result != None:
             self.results.append(result)
 
-        for dim in self.dimensions:
-            if isinstance(self.dimensions[dim][0], (int)):
-                if distribution == None:
-                    self.position[dim] = np.random.randint(self.dimensions[dim][0], self.dimensions[dim][1])
-                else:
-                    self.position[dim] = round(self.randomGen.normal(distribution[dim]/float(self.dimensions[dim][1]), 0.15)*self.dimensions[dim][1])
-            else:
-                if distribution == None:
-                    self.position[dim] = np.random.uniform(self.dimensions[dim][0], self.dimensions[dim][1])
-                else:
-                    self.position[dim] = self.randomGen.normal(distribution[dim]/self.dimensions[dim][1], 0.15)*self.dimensions[dim][1]
-
-            if self.position[dim] > max(self.dimensions[dim]):
-                self.position[dim] = max(self.dimensions[dim])
-            elif self.position[dim] < min(self.dimensions[dim]):
-                self.position[dim] = min(self.dimensions[dim])
-        
-        self.dimensionsBeingChanged = [list(self.position.keys())[self.randomGen.integers(0, len(self.position))] for _ in range(3)]
+        self.dimensionsBeingChanged = [list(self.dimensions.keys())[self.randomGen.integers(0, len(self.dimensions))] for _ in range(2)]
         print(self.dimensionsBeingChanged)
+
+        for dim in self.dimensions:
+            if dim in self.dimensionsBeingChanged or distribution == None:
+                if isinstance(self.dimensions[dim][0], (int)):
+                    if distribution == None:
+                        self.position[dim] = np.random.randint(self.dimensions[dim][0], self.dimensions[dim][1])
+                    else:
+                        self.position[dim] = round(self.randomGen.normal(distribution[dim]/float(self.dimensions[dim][1]), 0.15)*self.dimensions[dim][1])
+                else:
+                    if distribution == None:
+                        self.position[dim] = np.random.uniform(self.dimensions[dim][0], self.dimensions[dim][1])
+                    else:
+                        self.position[dim] = self.randomGen.normal(distribution[dim]/self.dimensions[dim][1], 0.15)*self.dimensions[dim][1]
+
+                if self.position[dim] > max(self.dimensions[dim]):
+                    self.position[dim] = max(self.dimensions[dim])
+                elif self.position[dim] < min(self.dimensions[dim]):
+                    self.position[dim] = min(self.dimensions[dim])
+            else:
+                self.position[dim] = distribution[dim]
 
     def intCheck(self):
         # parameters that are integers should stay integers
@@ -114,7 +116,7 @@ def runParticle(particle, progBar = None):
 
 def main():
     MAX_THREADS = 5
-    MAX_RUNS = 50
+    MAX_RUNS = 60
     PARTICLES = 20
 
     dimensions = {
@@ -131,6 +133,9 @@ def main():
     swarm.initialiseSwarm()
     oldParticles = []
 
+    bestResult = -1
+    bestPosition = {}
+
     with Pool(processes=MAX_THREADS) as pool:
         try:
             for run in range(MAX_RUNS):
@@ -139,16 +144,18 @@ def main():
                 newParticles = []
                 for out in pool.map(runParticle, swarm.particles):
                     output = np.append(output, [out[0]])
-                    if run % 5 == 0:
+                    if run != 0:
                         oldParticles.append(out[1])
                     newParticles.append(out[1])
                 print(f"Run {run} complete")
-                bestResult = output.min()
-                if run % 5 == 0:
-                    swarm.initialiseSwarm(newParticles[np.nonzero(output == bestResult)[0][0]].position, bestResult)
+                if output.min() <= bestResult or bestResult == -1:
+                    bestPosition = newParticles[np.nonzero(output == output.min())[0][0]].position
+                    bestResult = output.min()
+                if run % 20 == 0:
+                    swarm.initialiseSwarm(bestPosition, bestResult)
                 else:
                     swarm.particles = newParticles
-                print(f'max: {output.max()}, min: {bestResult}, mean: {output.mean()}, median: {np.median(output)}')
+                print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
                 
         except TimeoutError:
             assert False, "Timeout error"
@@ -157,7 +164,7 @@ def main():
     for i in oldParticles:
         result = {}
         for ii in range(len(i.results)):
-            result[ii] = [i.positions[ii], i.results[ii]]
+            result[i.id] = [i.positions[ii], i.results[ii]]
         particleResults.append(result)
     
     with open("./result.json", "w") as file:
