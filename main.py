@@ -167,7 +167,7 @@ def main():
             result[i.id] = [i.positions[ii], i.results[ii]]
         particleResults.append(result)
     
-    with open("./result.json", "w") as file:
+    with open("./swarmResult.json", "w") as file:
         file.write(dumps(particleResults))
 
 if __name__ == "__main__":
