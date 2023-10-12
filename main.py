@@ -38,7 +38,6 @@ class Particle():
             self.results.append(result)
 
         self.dimensionsBeingChanged = [list(self.dimensions.keys())[self.randomGen.integers(0, len(self.dimensions))] for _ in range(2)]
-        print(self.dimensionsBeingChanged)
 
         for dim in self.dimensions:
             if dim in self.dimensionsBeingChanged or distribution == None:
@@ -92,7 +91,6 @@ class Particle():
         self.position = newPosition
 
         self.intCheck()
-        print(self.results)
 
     def maxReasonableVelocity(self, dimension):
         # velocity should be limited based on range of dimension
@@ -115,7 +113,7 @@ def runParticle(particle, progBar = None):
     return [result, particle]
 
 def main():
-    MAX_THREADS = 5
+    MAX_THREADS = 8
     MAX_RUNS = 60
     PARTICLES = 20
 
