@@ -4,29 +4,32 @@ from multiprocessing import Pool, TimeoutError, Process
 from sys import float_info
 from json import dumps
 
+# Install: pip install numpy torch torchvision
+
 class ParticleSwarm():
-    def __init__(self, dim, count=3):
+    def __init__(self, dim, count=3, speed=0.0001):
         self.count = count
         self.dimensions = dim # 2d dict of [dimension][0|1] for lower/upper bound
         self.particles = []
         self.randomGen = np.random.default_rng()
+        self.speed = speed
 
     def initialiseSwarm(self, distribution = None, result = None):
         self.particles = []
         if distribution == None:
             for _ in range(self.count):
-                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000)))
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed))
         else:
             for _ in range(self.count):
-                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), distribution, result))
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed, distribution, result))
 
 class Particle():
-    def __init__(self, idString, dimensions, randomSeed, distribution = None, result = None):
+    def __init__(self, idString, dimensions, randomSeed, speed, distribution = None, result = None):
         self.id = idString
         self.dimensions = dimensions
         self.position = {} # dict of [dimension][value]
         self.velocity = {}
-        self.speed = 0.0001
+        self.speed = speed
         self.momentum = 0.9
         self.positions = []
         self.results = []
@@ -69,24 +72,24 @@ class Particle():
         newPosition = {}
         for dim in self.position:
             if dim in self.dimensionsBeingChanged:
-                normalisationFactor = float(self.dimensions[dim][1])
+                normalisationFactor = float(self.dimensions[dim][1]) # Normalise to prevent the result being changed by too high a factor
                 currentValue = (self.position[dim]/normalisationFactor, result)
                 lastValue = (self.positions[-1][dim]/normalisationFactor, self.results[-1]) if len(self.results) > 0 else (1, 1)
 
-                gradient = (currentValue[1]-lastValue[1])/(currentValue[0]-lastValue[0]+float_info.epsilon)
+                gradient = (currentValue[1]-lastValue[1])/(currentValue[0]-lastValue[0]+float_info.epsilon) # Simple y dif / x dif gradient from last point
 
-                newPosition[dim] = (currentValue[0] - gradient*self.speed)*normalisationFactor
+                newPosition[dim] = (currentValue[0] - gradient*self.speed)*normalisationFactor # Update value based on gradient and decaying speed
 
-                if newPosition[dim] > max(self.dimensions[dim]):
+                if newPosition[dim] > max(self.dimensions[dim]): # Crop to be within limits
                     newPosition[dim] = max(self.dimensions[dim])
                 elif newPosition[dim] < min(self.dimensions[dim]):
                     newPosition[dim] = min(self.dimensions[dim])
             else:
-                newPosition[dim] = self.position[dim]
+                newPosition[dim] = self.position[dim] # If value shouldn't be changed in this particle, ignore and move on
 
-        self.speed *= self.momentum
+        self.speed *= self.momentum # Decay speed
 
-        self.positions.append(self.position)
+        self.positions.append(self.position) # Keep track of positions/results
         self.results.append(result)
         self.position = newPosition
 
@@ -98,24 +101,33 @@ class Particle():
         return 0.3 * velRange
 
 def runParticle(particle, progBar = None):
+    # on non-docker OS, need to speciy python exe
+    # args = ["./env/Scripts/python.exe", "runNetwork.py"]
     args = ["python", "runNetwork.py"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
         # print(f"{key}: {str(value)}")
 
+    # creates string like "python runNetwork.py --batch-size 8 --lr 0.0005 --lr-drop 10"
+    # then runs it in a terminal and captures the output, converting it to a float and storing
+    # runNetwork.py should therefore ONLY output the final score to be used by the particle swarm
+
     output = subprocess.run(args, capture_output=True)
-    if progBar is not None:
+    if progBar is not None: # Tried to use tqdm progress bar but this tends to break
         progBar.update()
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
-    particle.update(result)
+    particle.update(result) # Calls the particle with it's result to update
     return [result, particle]
 
 def main():
-    MAX_THREADS = 8
-    MAX_RUNS = 60
-    PARTICLES = 20
+    MAX_THREADS = 2
+    MAX_ITERATIONS = 3
+    RUNS_PER_ITERATION = 20
+    PARTICLES = 2
+    SPEED = 0.0001 # initial learning rate of the particles
+    MOMENTUM = 0.5 # decay of speed
 
     dimensions = {
         "--lr": (0.0005, 0.005),
@@ -136,11 +148,13 @@ def main():
 
     with Pool(processes=MAX_THREADS) as pool:
         try:
-            for run in range(MAX_RUNS):
+            for run in range(MAX_ITERATIONS):
                 output = np.array([], dtype=np.float32)
                 print(f"Starting run {run}")
                 newParticles = []
-                for out in pool.map(runParticle, swarm.particles):
+                for out in pool.map(runParticle, swarm.particles): # Run the particles in parallel
+                    # Currently, max concurrent threads is just user defined.
+                    # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])
                     if run != 0:
                         oldParticles.append(out[1])
@@ -149,8 +163,9 @@ def main():
                 if output.min() <= bestResult or bestResult == -1:
                     bestPosition = newParticles[np.nonzero(output == output.min())[0][0]].position
                     bestResult = output.min()
-                if run % 20 == 0:
-                    swarm.initialiseSwarm(bestPosition, bestResult)
+                if run % RUNS_PER_ITERATION == 0:
+                    swarm.speed *= MOMENTUM
+                    swarm.initialiseSwarm(bestPosition, bestResult) # Initialise next set of particles based on all-time best result
                 else:
                     swarm.particles = newParticles
                 print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
