@@ -3,28 +3,45 @@ import subprocess
 from multiprocessing import Pool, TimeoutError, Process
 from sys import float_info
 from json import dumps
+import argparse
 
 # Install: pip install numpy torch torchvision
 
 class ParticleSwarm():
-    def __init__(self, dim, count=3, speed=0.0001):
+    def __init__(self, dim, count=3, pairs=[], speed=0.0001):
         self.count = count
         self.dimensions = dim # 2d dict of [dimension][0|1] for lower/upper bound
         self.particles = []
         self.randomGen = np.random.default_rng()
         self.speed = speed
+        self.favouredPairs = pairs
 
     def initialiseSwarm(self, distribution = None, result = None):
+        pairsToChange = self.favouredPairs
+        while len(pairsToChange) < self.count:
+            newPair = [list(self.dimensions.keys())[self.randomGen.integers(0, len(self.dimensions))] for _ in range(2)]
+            unique = False
+            maxTries = 5
+            tries = 0
+            while not unique and tries <= maxTries:
+                for i in pairsToChange:
+                    if newPair[0] in i and newPair[1] in i:
+                        newPair = [list(self.dimensions.keys())[self.randomGen.integers(0, len(self.dimensions))] for _ in range(2)]
+                        tries += 1
+                        break
+                unique = True
+            pairsToChange.append(newPair)
+
         self.particles = []
         if distribution == None:
             for _ in range(self.count):
-                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed))
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed, pairsToChange.pop()))
         else:
             for _ in range(self.count):
-                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed, distribution, result))
+                self.particles.append(Particle(hex(int(self.randomGen.random()*131064)), self.dimensions, int(self.randomGen.random()*1000000), self.speed, pairsToChange.pop(), distribution, result))
 
 class Particle():
-    def __init__(self, idString, dimensions, randomSeed, speed, distribution = None, result = None):
+    def __init__(self, idString, dimensions, randomSeed, speed, dimensionsToChange, distribution = None, result = None):
         self.id = idString
         self.dimensions = dimensions
         self.position = {} # dict of [dimension][value]
@@ -40,7 +57,7 @@ class Particle():
         if result != None:
             self.results.append(result)
 
-        self.dimensionsBeingChanged = [list(self.dimensions.keys())[self.randomGen.integers(0, len(self.dimensions))] for _ in range(2)]
+        self.dimensionsBeingChanged = dimensionsToChange
 
         for dim in self.dimensions:
             if dim in self.dimensionsBeingChanged or distribution == None:
@@ -100,10 +117,12 @@ class Particle():
         velRange = max(dimension) - min(dimension)
         return 0.3 * velRange
 
-def runParticle(particle, progBar = None):
-    # on non-docker OS, need to speciy python exe
+def runParticle(args, progBar = None):
+    executable = args[0]
+    particle = args[1]
+    # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = ["python", "runNetwork.py"]
+    args = [executable, "runNetwork.py"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
@@ -122,10 +141,15 @@ def runParticle(particle, progBar = None):
     return [result, particle]
 
 def main():
+    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser.add_argument('--exe', type=str, default="python", metavar='file',
+                    help='python executable to use (default: "python")')
+    args = parser.parse_args()
+
     MAX_THREADS = 2
     MAX_ITERATIONS = 3
     RUNS_PER_ITERATION = 20
-    PARTICLES = 2
+    PARTICLES = 10
     SPEED = 0.0001 # initial learning rate of the particles
     MOMENTUM = 0.5 # decay of speed
 
@@ -138,7 +162,13 @@ def main():
         "--batch-size": (32, 128)
     }
 
-    swarm = ParticleSwarm(dimensions, count=PARTICLES)
+    favouredPairs = [
+        ["--lr", "--lr2"],
+        ["--lr2", "--lr-drop"],
+        ["--lr", "--lr-drop"],
+    ]
+
+    swarm = ParticleSwarm(dimensions, count=PARTICLES, pairs = favouredPairs)
 
     swarm.initialiseSwarm()
     oldParticles = []
@@ -152,7 +182,7 @@ def main():
                 output = np.array([], dtype=np.float32)
                 print(f"Starting run {run}")
                 newParticles = []
-                for out in pool.map(runParticle, swarm.particles): # Run the particles in parallel
+                for out in pool.map(runParticle, zip([args.exe for _ in range(PARTICLES)], swarm.particles)): # Run the particles in parallel
                     # Currently, max concurrent threads is just user defined.
                     # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])
