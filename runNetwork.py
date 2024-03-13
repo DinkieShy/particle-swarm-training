@@ -114,7 +114,7 @@ if use_cuda:
 
 transform=transforms.Compose([
     transforms.ToTensor(),
-    transforms.Resize((208, 208), antialias=False)
+    transforms.Resize((416, 416), antialias=False)
     # transforms.Normalize((0.1307,), (0.3081,))
     ])
 dataset1 = datasets.OxfordIIITPet('./data', download=True,
