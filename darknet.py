@@ -22,12 +22,12 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	bboxAttributes = 5 + numClasses
 	numAnchors = len(anchors)
 
-	# Anchors are defined in reference to input image size, rescale to fit prediction feature map
-	anchors = [(anchor[0]/stride, anchor[1]/stride) for anchor in anchors]
-
 	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize*gridSize)
 	prediction = prediction.transpose(1, 2).contiguous()
 	prediction = prediction.view(batchSize, gridSize*gridSize*numAnchors, bboxAttributes)
+
+	# Anchors are defined in reference to input image size, rescale to fit prediction feature map
+	anchors = [(anchor[0]/stride, anchor[1]/stride) for anchor in anchors]
 
 	# Apply sigmoid to centreX, centreY and objectness score
 	prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
