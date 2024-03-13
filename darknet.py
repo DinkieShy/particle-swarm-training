@@ -1,7 +1,6 @@
 # Initially referenced from https://blog.paperspace.com/how-to-implement-a-yolo-v3-object-detector-from-scratch-in-pytorch-part-3/, plan to expand hence rewriting to understand fully
 # YoloLoss from https://github.com/BobLiu20/YOLOv3_PyTorch/blob/master/nets/yolo_loss.py fork
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -65,7 +64,7 @@ class YoloLoss(nn.Module):
 	def __init__(self, anchors, numClasses, imageSize):
 		super(YoloLoss, self).__init__()
 		self.anchors = anchors
-		self.numAnchors = len(anchors)
+		self.numAnchors = anchors # This is bad, please fix later <3
 		self.numClasses = numClasses
 		self.bboxAttributes = 5 + numClasses
 		self.imageSize = imageSize
@@ -183,15 +182,17 @@ class Darknet(nn.Module):
 		self.blocks = parseCfg(cfgFile)
 		self.net_info, self.moduleList = createModuleList(self.blocks)
 
-	def forward(self, x, CUDA=False):
-		modules = self.blocks[1:]
+	def forward(self, x, CUDA=True):
 		outputs = {} # Store feature maps for route layers later
-
 		write = False # Flag used to track when to initalise tensor of detection feature maps
-		for index, module in enumerate(modules):
+		for index, module in enumerate(self.blocks):
 			moduleType = module["type"]
+			if moduleType == "net":
+				continue
+
 			if moduleType == "convolutional" or moduleType == "upsample":
 				x = self.moduleList[index](x)
+				outputs[index] = x
 
 			elif moduleType == "route":
 				layers = [int(layer) for layers in module["layers"]]
@@ -199,16 +200,18 @@ class Darknet(nn.Module):
 					layers[0] -= index
 
 				if len(layers) == 1:
-					x = outputs[i + layers[0]]
+					x = outputs[index + (layers[0])]
 				else:
 					if layers[1] > 0:
 						layers[1] -= index
-					featureMaps = (outputs[index + layers[0]], outputs[i + layers[1]])
+					featureMaps = (outputs[index + layers[0]], outputs[index + layers[1]])
 					x = torch.cat(featureMaps, 1)
+				outputs[index] = x
 
 			elif moduleType == "shortcut":
 				layer = int(module["from"])
-				x = outputs[i-1] + outputs[i+layer]
+				x = outputs[index-1] + outputs[index+layer]
+				outputs[index] = x
 
 			elif moduleType == "yolo":
 				anchors = self.moduleList[index][0].anchors
@@ -224,5 +227,5 @@ class Darknet(nn.Module):
 				else:
 					detections = torch.cat((detections, x), 1)
 
-			outputs[index] = x
+			print(x.size())
 		return detections

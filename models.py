@@ -53,9 +53,10 @@ def createModuleList(blocks):
 				channels = int(block["filters"])
 				kernelSize = int(block["size"])
 				stride = int(block["stride"])
+				padding = int(block["pad"])
 
-				if "padding" in block:
-					pad = kernelSize - 1
+				if padding:
+					pad = (kernelSize - 1) // 2
 				else:
 					pad = 0
 
@@ -67,9 +68,10 @@ def createModuleList(blocks):
 				match block["activation"]:
 					case "leaky":
 						activation = nn.LeakyReLU(0.1, inplace=True)
+						newModule.add_module(f"leaky_{index}", activation)
 					case "mish":
 						activation == nn.Mish(inplace=True)
-				newModule.add_module(f"leaky_{index}", activation)
+						newModule.add_module(f"mish_{index}", activation)
 
 			case "upsample":
 				stride = int(block["stride"])

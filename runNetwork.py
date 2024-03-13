@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from math import isfinite
+import os
 
 import argparse
 from sys import argv
@@ -40,9 +41,9 @@ def train(args, model, device, train_loader, optimizer, epoch, lossAgent = None)
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
-        output = model(data)
         match args.network:
             case "darknet":
+                output = model(data, CUDA=torch.cuda.is_available())
                 losses = [[] for _ in range(7)]
                 # This is weird but useful when detecting at different scales
                 for i, lossItem in enumerate(lossAgent(output, target)):
@@ -51,6 +52,7 @@ def train(args, model, device, train_loader, optimizer, epoch, lossAgent = None)
                 loss = losses[0]
 
             case _:
+                output = model(data)
                 loss = F.nll_loss(output, target)
 
         loss.backward()
@@ -113,14 +115,14 @@ if use_cuda:
 
 transform=transforms.Compose([
     transforms.ToTensor(),
-    transforms.resize((416, 416), antialias=False),
-    transforms.Normalize((0.1307,), (0.3081,))
+    transforms.Resize((416, 416), antialias=False)
+    # transforms.Normalize((0.1307,), (0.3081,))
     ])
-dataset1 = datasets.MNIST('../data', train=True, download=True,
+dataset1 = datasets.OxfordIIITPet('./data', download=True,
                     transform=transform)
 train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
 
-dataset2 = datasets.MNIST('../data', train=False, download=True,
+dataset2 = datasets.OxfordIIITPet('./data', download=True,
                     transform=transform)
 test_loader = torch.utils.data.DataLoader(dataset2,**train_kwargs)
 
@@ -128,8 +130,9 @@ lossAgent = None
 numClasses = 2
 match args.network:
     case "darknet":
-        assert os.path.exists("./cfg/yolov3.yaml")
-        model = Darknet("./cfg/yolov3.yaml")
+        cfgPath = os.path.abspath("./cfg/yolov3.cfg")
+        assert os.path.exists(cfgPath)
+        model = Darknet(cfgPath)
         lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
 
     case "simplenet":
