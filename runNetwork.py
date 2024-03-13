@@ -130,7 +130,7 @@ numClasses = 2
 if args.network == "darknet":
     cfgPath = os.path.abspath("./cfg/yolov3.cfg")
     assert os.path.exists(cfgPath)
-    model = Darknet(cfgPath)
+    model = Darknet(cfgPath).to(device)
     lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
 elif args.network == "simplenet":
     model = Net().to(device)
