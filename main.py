@@ -161,7 +161,7 @@ def main():
         "--lr2": (0.00001, 0.0005),
         "--momentum": (0.75, 0.95),
         "--decay": (0.00001, 0.0001),
-        "--batch-size": (4, 8)
+        "--batch-size": (1, 1)
     }
 
     favouredPairs = [
