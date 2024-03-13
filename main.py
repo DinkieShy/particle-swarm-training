@@ -122,7 +122,7 @@ def runParticle(args, progBar = None):
     particle = args[1]
     # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = [f"{executable} runNetwork.py --network {args[0].network}"]
+    args = [f"{executable}", f"runNetwork.py --network {args[0].network}"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
