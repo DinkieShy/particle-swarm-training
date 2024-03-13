@@ -118,11 +118,11 @@ class Particle():
         return 0.3 * velRange
 
 def runParticle(args, progBar = None):
-    executable = args[0]
+    executable = args[0].exe
     particle = args[1]
     # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = [executable, "runNetwork.py"]
+    args = [f"{executable} runNetwork.py --network {args[0].network}"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
@@ -144,6 +144,8 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--exe', type=str, default="python", metavar='file',
                     help='python executable to use (default: "python")')
+    parser.add_argument("--network", type=str, default="simplenet", metavar="network",
+                    help="Network to use (default: \"simplenet\")")
     args = parser.parse_args()
 
     MAX_THREADS = 2
@@ -182,7 +184,7 @@ def main():
                 output = np.array([], dtype=np.float32)
                 print(f"Starting run {run}")
                 newParticles = []
-                for out in pool.map(runParticle, zip([args.exe for _ in range(PARTICLES)], swarm.particles)): # Run the particles in parallel
+                for out in pool.map(runParticle, zip([args for _ in range(PARTICLES)], swarm.particles)): # Run the particles in parallel
                     # Currently, max concurrent threads is just user defined.
                     # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])

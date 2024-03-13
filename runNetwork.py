@@ -8,6 +8,8 @@ from math import isfinite
 import argparse
 from sys import argv
 
+from darknet import YoloLoss, Darknet
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -33,14 +35,24 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
     
-def train(args, model, device, train_loader, optimizer, epoch):
+def train(args, model, device, train_loader, optimizer, epoch, lossAgent = None):
     model.train()
-    loss = 0
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = F.nll_loss(output, target)
+        match args.network:
+            case "darknet":
+                losses = [[] for _ in range(7)]
+                # This is weird but useful when detecting at different scales
+                for i, lossItem in enumerate(lossAgent(output, target)):
+                    losses[i].append(lossItem)
+                losses = [sum(i) for i in losses]
+                loss = losses[0]
+
+            case _:
+                loss = F.nll_loss(output, target)
+
         loss.backward()
         optimizer.step()
         
@@ -80,6 +92,8 @@ parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 parser.add_argument('--test', type=bool, default=False, metavar='T',
                     help='run on test set (default: False)')
+parser.add_argument("--network", type=str, default="darknet", metavar="network",
+                    help="Network to use (default: \"darknet\")")
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
@@ -99,6 +113,7 @@ if use_cuda:
 
 transform=transforms.Compose([
     transforms.ToTensor(),
+    transforms.resize((416, 416), antialias=False),
     transforms.Normalize((0.1307,), (0.3081,))
     ])
 dataset1 = datasets.MNIST('../data', train=True, download=True,
@@ -109,13 +124,21 @@ dataset2 = datasets.MNIST('../data', train=False, download=True,
                     transform=transform)
 test_loader = torch.utils.data.DataLoader(dataset2,**train_kwargs)
 
-model = Net().to(device)
+lossAgent = None
+numClasses = 2
+match args.network:
+    case "darknet":
+        assert os.path.exists("./cfg/yolov3.yaml")
+        model = Darknet("./cfg/yolov3.yaml")
+        lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
+
+    case "simplenet":
+        model = Net().to(device)
 
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-# for epoch in range(1, args.epochs + 1):
 for epoch in range(1, 15 + 1):
-    loss = train(args, model, device, train_loader, optimizer, epoch)
+    loss = train(args, model, device, train_loader, optimizer, epoch, lossAgent)
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:
             i['lr'] = args.lr2

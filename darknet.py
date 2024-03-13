@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from sys import float_info
-import cv2
 import numpy as np
 from utils import bboxIOU
 
@@ -80,9 +79,11 @@ class YoloLoss(nn.Module):
 		self.mseLoss = nn.MSELoss()
 		self.bceLoss = nn.BCELoss()
 
-	def forward(self, batch, inputDim, targets = None, CUDA=False):
+	def forward(self, batch, targets = None, CUDA=False):
 		batchSize = batch.size(0)
-		stride = inputDim // batch.size(2)
+
+		# \/ This is bad, please fix later <3 \/ #
+		stride = self.imageSize[0] // batch.size(2)
 
 		anchors = [(anchor[0]/stride, anchor[1]/stride) for anchor in anchors]
 
@@ -110,7 +111,7 @@ class YoloLoss(nn.Module):
 
 			totalLoss = lossX*self.lambaXY + lossY * self.lambaXY + lossWidth * self.lambdaWH + lossHeight * self.lambdaWH + lossConf * self.lambdaConf + lossClassPred * self.lambdaClass
 
-			return loss, lossX.item(), lossY.item(), lossWidth.item(), lossHeight.item(), lossConf.item(), lossClassPred.item()
+			return totalLoss, lossX.item(), lossY.item(), lossWidth.item(), lossHeight.item(), lossConf.item(), lossClassPred.item()
 		else:
 			if CUDA:
 				FloatTensor = torch.cuda.FloatTensor
@@ -118,10 +119,10 @@ class YoloLoss(nn.Module):
 			else:
 				FloatTensor = torch.FloatTensor
 				LongTensor = torch.LongTensor
-			gridX = torch.linspace(0, inputDim-1, inputDim).repeat(batchSize * self.numAnchors, 1, 1).view(x.shape).type(FloatTensor)
-			gridY = torch.linspace(0, inputDim-1, inputDim).repeat(batchSize * self.numAnchors, 1, 1).view(y.shape).type(FloatTensor)
-			anchorWidth = FloatTensor(anchors).index_select(1, torch.LongTensor([0])).repet(1, 1, inputDim ** 2).view(width.shape)
-			anchorHeight = FloatTensor(anchors).index_select(1, torch.LongTensor([1])).repeat(1, 1, inputDim ** 2).view(height.shape)
+			gridX = torch.linspace(0, self.imageSize[0]-1, self.imageSize[0]).repeat(batchSize * self.numAnchors, 1, 1).view(x.shape).type(FloatTensor)
+			gridY = torch.linspace(0, self.imageSize[1]-1, self.imageSize[1]).repeat(batchSize * self.numAnchors, 1, 1).view(y.shape).type(FloatTensor)
+			anchorWidth = FloatTensor(anchors).index_select(1, torch.LongTensor([0])).repet(1, 1, self.imageSize[0]*self.imageSize[1]).view(width.shape)
+			anchorHeight = FloatTensor(anchors).index_select(1, torch.LongTensor([1])).repeat(1, 1, self.imageSize[0]*self.imageSize[1]).view(height.shape)
 
 			predictedBoxes = FloatTensor(prediction[...,:4].shape)
 			predictedBoxes[...,0] = x.data + gridX
@@ -187,7 +188,7 @@ class Darknet(nn.Module):
 		outputs = {} # Store feature maps for route layers later
 
 		write = False # Flag used to track when to initalise tensor of detection feature maps
-		for index, module in enumerate(modules)
+		for index, module in enumerate(modules):
 			moduleType = module["type"]
 			if moduleType == "convolutional" or moduleType == "upsample":
 				x = self.moduleList[index](x)
@@ -224,4 +225,4 @@ class Darknet(nn.Module):
 					detections = torch.cat((detections, x), 1)
 
 			outputs[index] = x
-	return detections
+		return detections
