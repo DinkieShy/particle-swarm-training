@@ -226,6 +226,4 @@ class Darknet(nn.Module):
 					write = True
 				else:
 					detections = torch.cat((detections, x), 1)
-
-			print(x.size())
 		return detections
