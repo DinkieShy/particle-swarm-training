@@ -46,74 +46,72 @@ def createModuleList(blocks):
 
 	for index, block in enumerate(blocks):
 		newModule = nn.Sequential()
-		match block["type"]:
-			case "convolutional":
-				batchNormalize = "batch_normalize" in block
-				bias = not batchNormalize
-				channels = int(block["filters"])
-				kernelSize = int(block["size"])
-				stride = int(block["stride"])
-				padding = int(block["pad"])
+		if block["type"] == "convolutional":
+			batchNormalize = "batch_normalize" in block
+			bias = not batchNormalize
+			channels = int(block["filters"])
+			kernelSize = int(block["size"])
+			stride = int(block["stride"])
+			padding = int(block["pad"])
 
-				if padding:
-					pad = (kernelSize - 1) // 2
-				else:
-					pad = 0
+			if padding:
+				pad = (kernelSize - 1) // 2
+			else:
+				pad = 0
 
-				conv = nn.Conv2d(prevChannels, channels, kernelSize, stride, pad, bias=bias)
-				newModule.add_module(f"conv_{index}", conv)
-				if batchNormalize:
-					bn = nn.BatchNorm2d(channels)
-					newModule.add_module(f"batch_norm_{index}", bn)
-				match block["activation"]:
-					case "leaky":
-						activation = nn.LeakyReLU(0.1, inplace=True)
-						newModule.add_module(f"leaky_{index}", activation)
-					case "mish":
-						activation == nn.Mish(inplace=True)
-						newModule.add_module(f"mish_{index}", activation)
+			conv = nn.Conv2d(prevChannels, channels, kernelSize, stride, pad, bias=bias)
+			newModule.add_module(f"conv_{index}", conv)
+			if batchNormalize:
+				bn = nn.BatchNorm2d(channels)
+				newModule.add_module(f"batch_norm_{index}", bn)
+			if block["activation"] == "leaky":
+				activation = nn.LeakyReLU(0.1, inplace=True)
+				newModule.add_module(f"leaky_{index}", activation)
+			elif block["activation"] == "mish":
+				activation == nn.Mish(inplace=True)
+				newModule.add_module(f"mish_{index}", activation)
 
-			case "upsample":
-				stride = int(block["stride"])
-				upsample = nn.Upsample(scale_factor=2, mode="bilinear")
-				newModule.add_module(f"upsample_{index}", upsample)
+		elif block["type"] == "upsample":
+			stride = int(block["stride"])
+			upsample = nn.Upsample(scale_factor=2, mode="bilinear")
+			newModule.add_module(f"upsample_{index}", upsample)
 
-			case "route":
-				# Use feature map from previous layer
-				# The *actual* concatenation is done in the darknet forward pass, it really doesn't need it's own layer
-				targets = [int(layer) for layer in block["layers"].split(",")]
-				start = targets[0]
-				if len(targets) > 1:
-					end = targets[1]
-				else:
-					end = 0
+		elif block["type"] == "route":
+			# Use feature map from previous layer
+			# The *actual* concatenation is done in the darknet forward pass, it really doesn't need it's own layer
+			targets = [int(layer) for layer in block["layers"].split(",")]
+			start = targets[0]
+			if len(targets) > 1:
+				end = targets[1]
+			else:
+				end = 0
 
-				if start > 0:
-					start -= index
-				if end > 0:
-					end -= index
+			if start > 0:
+				start -= index
+			if end > 0:
+				end -= index
 
-				route = EmptyLayer()
-				newModule.add_module(f"route_{index}", route)
+			route = EmptyLayer()
+			newModule.add_module(f"route_{index}", route)
 
-				if end < 0:
-					channels = outputChannels[index + start] + outputChannels[index + end]
-				else:
-					channels = outputChannels[index + start]
+			if end < 0:
+				channels = outputChannels[index + start] + outputChannels[index + end]
+			else:
+				channels = outputChannels[index + start]
 
-			case "shortcut":
-				# Skip connection
-				shortcut = EmptyLayer()
-				newModule.add_module(f"shortcut_{index}", shortcut)
+		elif block["type"] == "shortcut":
+			# Skip connection
+			shortcut = EmptyLayer()
+			newModule.add_module(f"shortcut_{index}", shortcut)
 
-			case "yolo":
-				masks = [int(mask) for mask in block["mask"].split(",")]
-				anchors = [int(anchor) for anchor in block["anchors"].split(",")]
-				anchors = [(anchors[i], anchors[i+1]) for i in range(0, len(anchors), 2)]
-				anchors = [anchors[i] for i in masks]
+		elif block["type"] == "yolo":
+			masks = [int(mask) for mask in block["mask"].split(",")]
+			anchors = [int(anchor) for anchor in block["anchors"].split(",")]
+			anchors = [(anchors[i], anchors[i+1]) for i in range(0, len(anchors), 2)]
+			anchors = [anchors[i] for i in masks]
 
-				detection = YoloDetection(anchors)
-				newModule.add_module(f"detection_{index}", detection)
+			detection = YoloDetection(anchors)
+			newModule.add_module(f"detection_{index}", detection)
 
 		moduleList.append(newModule)
 		prevChannels = channels

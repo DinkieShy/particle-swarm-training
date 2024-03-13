@@ -41,19 +41,18 @@ def train(args, model, device, train_loader, optimizer, epoch, lossAgent = None)
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
-        match args.network:
-            case "darknet":
-                output = model(data, CUDA=torch.cuda.is_available())
-                losses = [[] for _ in range(7)]
-                # This is weird but useful when detecting at different scales
-                for i, lossItem in enumerate(lossAgent(output, target)):
-                    losses[i].append(lossItem)
-                losses = [sum(i) for i in losses]
-                loss = losses[0]
+        if args.network == "darknet":
+            output = model(data, CUDA=torch.cuda.is_available())
+            losses = [[] for _ in range(7)]
+            # This is weird but useful when detecting at different scales
+            for i, lossItem in enumerate(lossAgent(output, target)):
+                losses[i].append(lossItem)
+            losses = [sum(i) for i in losses]
+            loss = losses[0]
 
-            case _:
-                output = model(data)
-                loss = F.nll_loss(output, target)
+        else:
+            output = model(data)
+            loss = F.nll_loss(output, target)
 
         loss.backward()
         optimizer.step()
@@ -128,15 +127,13 @@ test_loader = torch.utils.data.DataLoader(dataset2,**train_kwargs)
 
 lossAgent = None
 numClasses = 2
-match args.network:
-    case "darknet":
-        cfgPath = os.path.abspath("./cfg/yolov3.cfg")
-        assert os.path.exists(cfgPath)
-        model = Darknet(cfgPath)
-        lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
-
-    case "simplenet":
-        model = Net().to(device)
+if args.network == "darknet":
+    cfgPath = os.path.abspath("./cfg/yolov3.cfg")
+    assert os.path.exists(cfgPath)
+    model = Darknet(cfgPath)
+    lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
+elif args.network == "simplenet":
+    model = Net().to(device)
 
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
