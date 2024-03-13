@@ -19,7 +19,7 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	batchSize = prediction.size(0)
 	stride = inputDim // prediction.size(2)
 	gridSize = inputDim // stride 
-	bbox_attributes = 5 + numClasses
+	bboxAttributes = 5 + numClasses
 	numAnchors = len(anchors)
 
 	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize*gridSize)
