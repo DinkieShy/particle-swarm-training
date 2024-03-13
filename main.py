@@ -170,7 +170,7 @@ def main():
         ["--lr", "--lr-drop"],
     ]
 
-    swarm = ParticleSwarm(dimensions, count=PARTICLES, pairs = favouredPairs, SPEED)
+    swarm = ParticleSwarm(dimensions, count=PARTICLES, pairs = favouredPairs, speed=SPEED)
 
     swarm.initialiseSwarm()
     oldParticles = []
