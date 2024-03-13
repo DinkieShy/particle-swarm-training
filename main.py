@@ -148,7 +148,7 @@ def main():
                     help="Network to use (default: \"simplenet\")")
     args = parser.parse_args()
 
-    MAX_THREADS = 2
+    MAX_THREADS = 1
     MAX_ITERATIONS = 3
     RUNS_PER_ITERATION = 20
     PARTICLES = 10
