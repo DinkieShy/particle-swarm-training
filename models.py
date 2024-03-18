@@ -50,6 +50,8 @@ def createModuleList(blocks):
 			batchNormalize = "batch_normalize" in block
 			bias = not batchNormalize
 			channels = int(block["filters"])
+			if blocks[index+1]["type"] == "yolo":
+				channels = (int(netInfo["numClasses"]) + 5) * 3
 			kernelSize = int(block["size"])
 			stride = int(block["stride"])
 			padding = int(block["pad"])

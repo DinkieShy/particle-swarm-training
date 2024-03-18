@@ -1,4 +1,5 @@
 from sys import float_info
+import torch
 
 def bboxIOU(boxA, boxB, corners = False, widthHeight = False):
 	assert corners or widthHeight, "Must specify bounding box format as [x1, y1, x2, y2] or [x, y, width, height]"
@@ -7,8 +8,8 @@ def bboxIOU(boxA, boxB, corners = False, widthHeight = False):
 		boxA = convertBbox(boxA)
 		boxB = convertBbox(boxB)
 
-	intersectWidth = max(boxA[2], boxB[2]) - min(boxA[0], boxB[0])
-	intersectHeight = max(boxA[3], boxB[3]) - min(boxA[1], boxB[1])
+	intersectWidth = torch.clamp(torch.max(boxA[2], boxB[2]) - torch.min(boxA[0], boxB[0]), min=0)
+	intersectHeight = torch.clamp(torch.max(boxA[3], boxB[3]) - torch.min(boxA[1], boxB[1]), min=0)
 	if intersectWidth <= 0 or intersectHeight <= 0:
 		intersectArea = 0
 	else:

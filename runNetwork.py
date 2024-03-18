@@ -10,6 +10,8 @@ import argparse
 from sys import argv
 
 from darknet import YoloLoss, Darknet
+from datasets.beetData import AugmentedBeetDataset
+from datasets import CustomTransforms as customTransforms
 
 class Net(nn.Module):
     def __init__(self):
@@ -36,20 +38,24 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
     
-def train(args, model, device, train_loader, optimizer, epoch, lossAgent = None):
+def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        print(data.size())
-        data, target = data.to(device), target.to(device)
+    for _, (data, target) in enumerate(train_loader):
+        # Data (for beet dataset) is in a dict form, needs to be put on device in eval function
+        # because of different formats needed per network
+        data = data.to(device)
         optimizer.zero_grad()
         if args.network == "darknet":
-            output = model(data, CUDA=torch.cuda.is_available())
-            losses = [[] for _ in range(7)]
-            # This is weird but useful when detecting at different scales
-            for i, lossItem in enumerate(lossAgent(output, target)):
-                losses[i].append(lossItem)
-            losses = [sum(i) for i in losses]
-            loss = losses[0]
+            output, loss = model(data, target, CUDA=torch.cuda.is_available())
+            # losses = [[] for _ in range(7)]
+            # anchors = []
+            # for i in anchorsUsed:
+            #     anchors += i
+            # # This is weird but useful when detecting at different scales
+            # for i, lossItem in enumerate(YoloLoss(anchors, numClasses, (int(model.net_info["width"]), int(model.net_info["height"])))(output, target)):
+            #     losses[i].append(lossItem)
+            # losses = [sum(i) for i in losses]
+            # loss = losses[0]
 
         else:
             output = model(data)
@@ -113,18 +119,17 @@ if use_cuda:
                     'shuffle': True}
     train_kwargs.update(cuda_kwargs)
 
-transform=transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Resize((416, 416), antialias=False)
-    # transforms.Normalize((0.1307,), (0.3081,))
-    ])
-dataset1 = datasets.OxfordIIITPet('./data', download=True,
-                    transform=transform)
-train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
 
-dataset2 = datasets.OxfordIIITPet('./data', download=True,
-                    transform=transform)
-test_loader = torch.utils.data.DataLoader(dataset2,**train_kwargs)
+def transform(image, targets):
+    image, targets["boxes"] = customTransforms.resize(transforms.ToPILImage()(image), targets["boxes"], (416, 416))
+    image = transforms.ToTensor()(image)
+    return image, targets
+
+trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
+train_loader = torch.utils.data.DataLoader(trainDataset,**train_kwargs)
+
+valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+test_loader = torch.utils.data.DataLoader(valDataset,**train_kwargs)
 
 lossAgent = None
 numClasses = 2
@@ -132,14 +137,13 @@ if args.network == "darknet":
     cfgPath = os.path.abspath("./cfg/yolov3.cfg")
     assert os.path.exists(cfgPath)
     model = Darknet(cfgPath).to(device)
-    lossAgent = YoloLoss(18, numClasses, (model.net_info["width"], model.net_info["height"]))
 elif args.network == "simplenet":
     model = Net().to(device)
 
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
 for epoch in range(1, 15 + 1):
-    loss = train(args, model, device, train_loader, optimizer, epoch, lossAgent)
+    loss = train(args, model, device, train_loader, optimizer, epoch)
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:
             i['lr'] = args.lr2
