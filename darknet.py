@@ -63,72 +63,6 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	return prediction
 
-# def getPredictions(detections, confThreshold, numClasses, nmsConf = 0.5):
-# 	confMask = (detections[:,:,4] > confThreshold).float().unsqueeze(2)
-# 	detections *= confMask # Ignore detections with confidence below threshold
-
-# 	# detections is in format [xCenter, yCenter, width, height], need to convert to corners
-# 	boxes = detections.new(detections.shape)
-# 	boxes[:,:,0] = (detections[:,:,0] - detections[:,:,2]/2)
-# 	boxes[:,:,1] = (detections[:,:,1] - detections[:,:,3]/2)
-# 	boxes[:,:,2] = (detections[:,:,0] + detections[:,:,2]/2)
-# 	boxes[:,:,3] = (detections[:,:,1] + detections[:,:,3]/2)
-	# detections[:,:,:4] = boxes[:,:,:4]
-
-	# batchSize = detections.size(0)
-	# write = False # flag to initalise output
-	# for index in range(batchSize):
-	# 	imageDetections = detections[index] 
-	# 	# extract class with highest confidence
-	# 	maxConf, maxConfScore = torch.max(imageDetections[:,5:5+numClasses], 1)
-	# 	maxConf = maxConf.float().unsqueeze(1)
-	# 	maxConfScore = maxConfScore.float().unsqueeze(1)
-	# 	# remove 0'd detections from before
-	# 	nonZeroDetections = torch.nonzero(imageDetections[:,4])
-	# 	try:
-	# 		imageDet = imageDetections[nonZeroDetections.squeeze(),:].view(-1, 7)
-	# 	except:
-	# 		continue
-	# 	if imageDet.shape[0] == 0:
-	# 		continue
-
-	# 	imageClasses = filterUnique(imageDet[:,-1])
-	# 	for classification in imageClasses:
-	# 		classificationMask = imageDet * (imageDet[:,-1] == classification).float().unsqueeze(1)
-	# 		classificationMaskIndex = torch.nonzero(classificationMask[:,-2]).squeeze()
-	# 		imageDetClass = imageDet[classificationMaskIndex].view(-1, 7)
-
-	# 		confSortIndex = torch.sort(imageDetClass[:,4], descending=True)[1]
-	# 		imageDetClass = imageDetClass[confSortIndex]
-	# 		detCount = imageDetClass.size(0)
-
-	# 		for i in range(detCount):
-	# 			try:
-	# 				ious = bboxIOU(imageDetClass[i].unsqueeze(0), imageDetClass[i+1:], corners=True)
-	# 			except ValueError:
-	# 				break
-	# 			except IndexError:
-	# 				break
-
-	# 			iouMask = (ious < nmsConf).float().unsqueeze(1)
-	# 			imageDetClass[i+1:] *= iouMask
-
-	# 			nonzeroIndices = torch.nonzero(imageDetClass[:,4]).squeeze()
-	# 			imageDetClass = imageDetClass[nonzeroIndices].view(-1, 7)
-
-	# 			batchIndex = imageDetClass.new(imageDetClass.size(0), 1).fill_(index)
-	# 			seq = batchIndex, imageDetClass
-
-	# 			if not write:
-	# 				detectedBoxes = torch.cat(seq, 1)
-	# 				write = True
-	# 			else:
-	# 				detectedBoxes = torch.cat((detectedBoxes, torch.cat(seq, 1)))
-	# try:
-	# 	return detectedBoxes
-	# except:
-	# 	return 0
-
 class YoloLoss(nn.Module):
 	def __init__(self, anchors, numClasses, mapSize, imageSize):
 		super(YoloLoss, self).__init__()
@@ -169,11 +103,6 @@ class YoloLoss(nn.Module):
 
 		# Anchor sizes are determined via k-means clustering- need to do this on our dataset?
 
-		# Loop through images
-		# Compare to targets
-		# Loss get
-
-
 		batchSize = output.size(0)
 		strideWidth = self.imageSize[0]/self.mapSize[0]
 		strideHeight = self.imageSize[1]/self.mapSize[1]
@@ -185,6 +114,13 @@ class YoloLoss(nn.Module):
 		height = output[..., 3]
 		conf = output[..., 4]
 		classPred = output[..., 5:]
+
+		targetX = torch.zeros(x.shape)
+		targetY = torch.zeros(x.shape)
+		targetWidth = torch.zeros(x.shape)
+		targetHeight = torch.zeros(x.shape)
+		targetConf = torch.zeros(x.shape)
+		targetClassPred  = torch.zeros(classPred.shape)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -199,16 +135,23 @@ class YoloLoss(nn.Module):
 				boxClass[targets["labels"][index][i]-1] = 1
 				imageTargetClasses = torch.stack(((imageTargetClasses), boxClass))
 
+			for i in range(len(imageTargetBoxes)):
+				x1, y1, x2, y2 = imageTargetBoxes[i]
+				imageTargetBoxes[i][0] = (x1+x2)/2
+				imageTargetBoxes[i][1] = (y1+y2)/2		
+				imageTargetBoxes[i][2] = x2 - x1
+				imageTargetBoxes[i][3] = y2 - y1	
+
 			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1)
 			if CUDA:
 				imageTargets = imageTargets.cuda()
 
-			# ^ creates tensor of [[minX, minY, maxX, maxY, classBool, classBool, ... , classBool]]
+			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
 			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1]))
-			# Extracts pixels that correlate to GT boxes
-			objMask = torch.zeros(mask.shape)
-			# Used to ignore boxes that don't have IoU > 0.5 to any boxes
+			# >0 : pixel overlaps GT box with stored index
+			# -1 : pixel does not correspond to a GT box
+			exactMatches = torch.zeros(mask.shape)
 
 			for i in range(len(imageTargets)):
 				# Select anchor with closest area
@@ -222,7 +165,8 @@ class YoloLoss(nn.Module):
 
 				targetCenter = [int((imageTargets[i][2]-imageTargets[i][0])/strideWidth), int((imageTargets[i][3]-imageTargets[i][1])/strideHeight)]
 
-				mask[index,bestMatch,targetCenter[0],targetCenter[1]] = 1
+				mask[index,bestMatch,targetCenter[0],targetCenter[1]] = i
+				exactMatches[index, bestMatch, targetCenter[0], targetCenter[1]] = 1
 				# mask[index, anchor, xCenter, yCenter] = 1 if *that* pixel corresponds to a gt box
 				# Only this pixel incurs x/y/class loss
 				# For other pixels, no loss incurred if 0.5 IoU with a gt box, else only objectness loss
@@ -230,25 +174,50 @@ class YoloLoss(nn.Module):
 			for xCoord in range(self.mapSize[0]):
 				for yCoord in range(self.mapSize[1]):
 					for anchor in range(len(self.anchors)):
-						box = output[index,anchor,xCoord,yCoord,:]
-						if any([bboxIOU(convertBbox(box), targetBox, corners=True) > 0.5 for targetBox in targets["boxes"][index]]):
-							objMask[index, anchor, xCoord, yCoord] = 1
+						x[index,anchor,xCoord,yCoord] -= xCoord
+						y[index,anchor,xCoord,yCoord] -= yCoord
 
-			# Struggling with the fact self.mseLoss needs target tensor in same shape as x, y etc.
-			# Could loop through every pixel and every anchor size but that feels dumb as hell?
-			# Need to assign target box to each detection and then multiply by mask I guess?
+						if exactMatches[index, anchor, xCoord, yCoord] == 1:
+							# exact match 
+							targetMatched = imageTargets[int(mask[index, anchor, xCoord, yCoord])]
+							targetX[index,anchor,xCoord,yCoord] = targetMatched[0]-xCoord
+							targetY[index,anchor,xCoord,yCoord] = targetMatched[1]-yCoord
+							targetWidth[index,anchor,xCoord,yCoord] = targetMatched[2]
+							targetHeight[index,anchor,xCoord,yCoord] = targetMatched[3]
+							targetConf[index,anchor,xCoord,yCoord] = 1
+							targetClassPred[index,anchor,xCoord,yCoord] = targetMatched[5:]
+						else:
+							box = output[index,anchor,xCoord,yCoord,:]
+							bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets["boxes"][index]]
+							bestFitTarget = bboxIOUs.index(max(bboxIOUs))
+
+							# Not assigned to GT, ignore prediction (except objectness)
+							x[index,anchor,xCoord,yCoord] *= 0
+							y[index,anchor,xCoord,yCoord] *= 0
+							width[index,anchor,xCoord,yCoord] *= 0
+							height[index,anchor,xCoord,yCoord] *= 0
+							classPred[index,anchor,xCoord,yCoord] *= torch.zeros(self.numClasses)
+
+							if bboxIOUs[bestFitTarget] > 0.5:
+								# overlaps with GT box, also ignore objectness
+								conf[index,anchor,xCoord,yCoord] *= 0
 							
-			# could create zeros in shape we need, then only populate based on obj mask?
-			# looping through that anyways, and technically *also* have best matched target per pixel...
+		# print(targetClassPred[0,0])
+		# input(classPred)
+			
+		xLoss = self.mseLoss(x, targetX)
+		yLoss = self.mseLoss(y, targetY)
+		widthLoss = self.mseLoss(width, targetWidth)
+		heightLoss = self.mseLoss(height, targetHeight)
+		confLoss = self.bceLoss(conf, targetConf)
+		classPredLoss = self.bceLoss(classPred, targetClassPred)
 
-			x[index] *= mask
-			y[index] *= mask
-			width[index] *= mask
-			height[index] *= mask
-			classPred[index] *= mask
-			conf[index] *= objMask
+		loss =  (xLoss + yLoss) * self.lambaXY + \
+				(widthLoss + heightLoss) * self.lambdaWH + \
+				confLoss * self.lambdaConf + \
+				classPredLoss * self.lambdaClass
 
-			return torch.zeros(7)
+		return loss, xLoss.item(), yLoss.item(), widthLoss.item(), heightLoss.item(), confLoss.item(), classPredLoss.item()
 
 def filterUnique(tensor):
 	npTensor = tensor.cpu().numpy()
@@ -264,6 +233,8 @@ class Darknet(nn.Module):
 		super(Darknet, self).__init__()
 		self.blocks = parseCfg(cfgFile)
 		self.net_info, self.moduleList = createModuleList(self.blocks)
+		self.losses = []
+		self.lossFuncs = {}
 
 	def forward(self, x, target=None, CUDA=True):
 		outputs = {} # Store feature maps for route layers later
@@ -306,20 +277,24 @@ class Darknet(nn.Module):
 				x = predictTransform(x, inputDim, anchors, numClasses, CUDA) 
 
 				if self.training:
-					lossFunc = YoloLoss(anchors, numClasses, (mapSize[2], mapSize[3]), (self.net_info["width"], self.net_info["height"]))
+					if mapSize[2] not in self.lossFuncs.keys():
+						self.lossFuncs[mapSize[2]] = YoloLoss(anchors, numClasses, (mapSize[2], mapSize[3]), (self.net_info["width"], self.net_info["height"]))
 
 				if not write:
 					self.detections = x
 					write = True
 					if self.training:
-						self.loss = lossFunc(x, target)
+						losses = list(self.lossFuncs[mapSize[2]](x, target))
+						for i in range(len(losses)):
+							self.losses.append([losses[i]])
 				else:
 					self.detections = torch.cat((self.detections, x), 1)
 					if self.training:
-						self.loss = torch.cat((self.loss, lossFunc(x, target)))
-					
+						newLosses = list(self.lossFuncs[mapSize[2]](x, target))
+						for i in range(len(newLosses)):
+							self.losses[i].append(newLosses[i])
 
 		if self.training:
-			return self.detections, self.loss
+			return self.detections, self.losses
 		else:
 			return self.detections

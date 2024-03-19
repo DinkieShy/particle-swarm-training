@@ -46,16 +46,14 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data = data.to(device)
         optimizer.zero_grad()
         if args.network == "darknet":
-            output, loss = model(data, target, CUDA=torch.cuda.is_available())
-            # losses = [[] for _ in range(7)]
-            # anchors = []
-            # for i in anchorsUsed:
-            #     anchors += i
-            # # This is weird but useful when detecting at different scales
-            # for i, lossItem in enumerate(YoloLoss(anchors, numClasses, (int(model.net_info["width"]), int(model.net_info["height"])))(output, target)):
-            #     losses[i].append(lossItem)
-            # losses = [sum(i) for i in losses]
-            # loss = losses[0]
+            output, losses = model(data, target, CUDA=torch.cuda.is_available())
+            # Instead of computing loss inside forward pass, need to:
+            #   change concat settings to separate detections by anchor (if training)
+            #   alternatively figure out how to not do that instead
+            #
+            #   compute losses *after* forward pass, using same functions
+            losses = [sum(i) for i in losses]
+            loss = losses[0]
 
         else:
             output = model(data)
@@ -126,10 +124,10 @@ def transform(image, targets):
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
-train_loader = torch.utils.data.DataLoader(trainDataset,**train_kwargs)
+train_loader = torch.utils.data.DataLoader(trainDataset, shuffle=True, **train_kwargs)
 
 valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
-test_loader = torch.utils.data.DataLoader(valDataset,**train_kwargs)
+test_loader = torch.utils.data.DataLoader(valDataset, shuffle=True, **train_kwargs)
 
 lossAgent = None
 numClasses = 2
