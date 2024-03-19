@@ -204,7 +204,7 @@ class YoloLoss(nn.Module):
 							y[index,anchor,xCoord,yCoord] *= 0
 							width[index,anchor,xCoord,yCoord] *= 0
 							height[index,anchor,xCoord,yCoord] *= 0
-							for cls in classPred[index, anchor,xCoord,yCoord]:
+							for cls in range(len(classPred[index, anchor,xCoord,yCoord])):
 								classPred[index,anchor,xCoord,yCoord,cls] *= 0
 
 							if bboxIOUs[bestFitTarget] > 0.5:
