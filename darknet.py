@@ -233,8 +233,6 @@ class Darknet(nn.Module):
 		super(Darknet, self).__init__()
 		self.blocks = parseCfg(cfgFile)
 		self.net_info, self.moduleList = createModuleList(self.blocks)
-		self.losses = []
-		self.lossFuncs = {}
 
 	def forward(self, x, target=None, CUDA=True):
 		outputs = {} # Store feature maps for route layers later
@@ -271,30 +269,14 @@ class Darknet(nn.Module):
 				anchors = self.moduleList[index][0].anchors
 				inputDim = int(self.net_info["height"])
 				numClasses = int(self.net_info["numClasses"])
-				mapSize = x.shape
 
 				x = x.data
 				x = predictTransform(x, inputDim, anchors, numClasses, CUDA) 
 
-				if self.training:
-					if mapSize[2] not in self.lossFuncs.keys():
-						self.lossFuncs[mapSize[2]] = YoloLoss(anchors, numClasses, (mapSize[2], mapSize[3]), (self.net_info["width"], self.net_info["height"]))
-
 				if not write:
 					self.detections = x
 					write = True
-					if self.training:
-						losses = list(self.lossFuncs[mapSize[2]](x, target))
-						for i in range(len(losses)):
-							self.losses.append([losses[i]])
 				else:
 					self.detections = torch.cat((self.detections, x), 1)
-					if self.training:
-						newLosses = list(self.lossFuncs[mapSize[2]](x, target))
-						for i in range(len(newLosses)):
-							self.losses[i].append(newLosses[i])
 
-		if self.training:
-			return self.detections, self.losses
-		else:
-			return self.detections
+		return self.detections

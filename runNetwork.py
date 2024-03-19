@@ -46,12 +46,16 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data = data.to(device)
         optimizer.zero_grad()
         if args.network == "darknet":
-            output, losses = model(data, target, CUDA=torch.cuda.is_available())
+            output = model(data, target, CUDA=torch.cuda.is_available())
+            
             # Instead of computing loss inside forward pass, need to:
             #   change concat settings to separate detections by anchor (if training)
             #   alternatively figure out how to not do that instead
             #
             #   compute losses *after* forward pass, using same functions
+            print(output.shape)
+            losses = torch.zeros(7, requires_grad=True)
+
             losses = [sum(i) for i in losses]
             loss = losses[0]
 
