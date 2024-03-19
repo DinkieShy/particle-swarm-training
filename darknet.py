@@ -204,7 +204,8 @@ class YoloLoss(nn.Module):
 							y[index,anchor,xCoord,yCoord] *= 0
 							width[index,anchor,xCoord,yCoord] *= 0
 							height[index,anchor,xCoord,yCoord] *= 0
-							classPred[index,anchor,xCoord,yCoord] *= (torch.zeros(self.numClasses).cuda() if CUDA else torch.zeros(self.numClasses))
+							for cls in classPred[index, anchor,xCoord,yCoord]:
+								classPred[index,anchor,xCoord,yCoord,cls] *= 0
 
 							if bboxIOUs[bestFitTarget] > 0.5:
 								# overlaps with GT box, also ignore objectness
