@@ -122,6 +122,14 @@ class YoloLoss(nn.Module):
 		targetConf = torch.zeros(x.shape)
 		targetClassPred  = torch.zeros(classPred.shape)
 
+		if CUDA:
+			targetX = targetX.cuda()
+			targetY = targetY.cuda()
+			targetWidth = targetWidth.cuda()
+			targetHeight = targetHeight.cuda()
+			targetConf = targetConf.cuda()
+			targetClassPred = targetClassPred.cuda()
+
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
 		# There are predictions for every pixel for every anchor size
