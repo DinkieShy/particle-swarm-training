@@ -129,10 +129,10 @@ def transform(image, targets):
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
-train_loader = torch.utils.data.DataLoader(trainDataset, shuffle=True, **train_kwargs)
+train_loader = torch.utils.data.DataLoader(trainDataset, **train_kwargs)
 
 valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
-test_loader = torch.utils.data.DataLoader(valDataset, shuffle=True, **train_kwargs)
+test_loader = torch.utils.data.DataLoader(valDataset, **train_kwargs)
 
 lossAgent = None
 numClasses = 2
