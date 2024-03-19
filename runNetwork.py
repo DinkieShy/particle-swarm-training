@@ -59,7 +59,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
             losses = [sum(i) for i in losses]
             loss = losses[0]
-            print(loss)
 
         else:
             output = model(data)
@@ -146,8 +145,9 @@ elif args.network == "simplenet":
 
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-for epoch in range(1, 15 + 1):
+for epoch in range(1, 60):
     loss = train(args, model, device, train_loader, optimizer, epoch)
+    print(loss)
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:
             i['lr'] = args.lr2
