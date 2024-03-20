@@ -131,15 +131,15 @@ class YoloLoss(nn.Module):
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
 		# There are predictions for every pixel for every anchor size
-
+		
 		for index in range(batchSize):
 			imageTargetBoxes = targets[index]["boxes"]
-			imageTargetClasses = torch.zeros(self.numClasses).to(device)
-			imageTargetClasses[targets[index]["labels"][0]] = 1
+			imageTargetClasses = torch.zeros((1,self.numClasses)).to(device)
+			imageTargetClasses[0,targets[index]["labels"][0]-1] = 1
 			for i in range(1, len(imageTargetBoxes)):
 				boxClass = torch.zeros(self.numClasses).to(device)
 				boxClass[targets[index]["labels"][i]-1] = 1
-				imageTargetClasses = torch.stack(((imageTargetClasses), boxClass))
+				imageTargetClasses = torch.cat(((imageTargetClasses), boxClass.unsqueeze(0)), dim=0)
 
 			for i in range(len(imageTargetBoxes)):
 				x1, y1, x2, y2 = imageTargetBoxes[i]
@@ -205,9 +205,6 @@ class YoloLoss(nn.Module):
 							if bboxIOUs[bestFitTarget] > 0.5:
 								# overlaps with GT box, also ignore objectness
 								conf[index,anchor,xCoord,yCoord] *= 0
-							
-		# print(targetClassPred[0,0])
-		# input(classPred)
 			
 		xLoss = self.mseLoss(x, targetX)
 		yLoss = self.mseLoss(y, targetY)
