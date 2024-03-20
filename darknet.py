@@ -134,10 +134,10 @@ class YoloLoss(nn.Module):
 
 		for index in range(batchSize):
 			imageTargetBoxes = targets[index]["boxes"]
-			imageTargetClasses = torch.zeros(self.numClasses)
+			imageTargetClasses = torch.zeros(self.numClasses).to(device)
 			imageTargetClasses[targets[index]["labels"][0]] = 1
 			for i in range(1, len(imageTargetBoxes)):
-				boxClass = torch.zeros(self.numClasses)
+				boxClass = torch.zeros(self.numClasses).to(device)
 				boxClass[targets[index]["labels"][i]-1] = 1
 				imageTargetClasses = torch.stack(((imageTargetClasses), boxClass))
 
