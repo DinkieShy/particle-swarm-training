@@ -42,9 +42,9 @@ class Net(nn.Module):
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
     for dataBatch, targets in train_loader:
-        data = dataBatch[0].unsqueeze(0)
+        data = dataBatch[0].unsqueeze(0).to(device)
         for i in range(1, len(dataBatch)):
-            data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
+            data = torch.cat((data, dataBatch[i].unsqueeze(0).to(device)), dim=0)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         optimizer.zero_grad()
         if args.network == "darknet":
