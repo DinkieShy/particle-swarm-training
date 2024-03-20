@@ -9,9 +9,10 @@ import os
 import argparse
 from sys import argv
 
-from darknet import YoloLoss, Darknet
+from darknet import Darknet
 from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
+from utils import collate_fn
 
 class Net(nn.Module):
     def __init__(self):
@@ -39,15 +40,20 @@ class Net(nn.Module):
         return output
     
 def train(args, model, device, train_loader, optimizer, epoch):
-    model.train()
-    for _, (data, target) in enumerate(train_loader):
+    model.train() 
+    for dataBatch, targets in train_loader:
         # Data (for beet dataset) is in a dict form, needs to be put on device in eval function
         # because of different formats needed per network
-        data = data.to(device)
+        data = dataBatch[0]
+        for i in range(1, len(dataBatch)):
+            data = torch.stack((data, dataBatch[i]), dim=0)
+            
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        
         optimizer.zero_grad()
         if args.network == "darknet":
             model.losses = []
-            output, losses = model(data, target, CUDA=torch.cuda.is_available())
+            output, losses = model(data, targets, CUDA=torch.cuda.is_available())
             
             # Instead of computing loss inside forward pass, need to:
             #   change concat settings to separate detections by anchor (if training)
@@ -62,7 +68,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         else:
             output = model(data)
-            loss = F.nll_loss(output, target)        
+            loss = F.nll_loss(output, targets)        
 
         loss.backward()
         optimizer.step()
@@ -75,7 +81,7 @@ def test(model, test_loader, device):
     total = len(test_loader.dataset)
 
     with torch.no_grad():
-        for image, label in test_loader:
+        for (image, label) in test_loader:
             image, label = image.to(device), label.to(device)
             prediction = model(image)
             correct += (prediction.argmax(1) == label).type(torch.float).sum().item()
@@ -114,11 +120,11 @@ if use_cuda:
 else:
     device = torch.device("cpu")
 
-train_kwargs = {'batch_size': args.batch_size}
+train_kwargs = {'batch_size': args.batch_size,
+                    'shuffle': True}
 if use_cuda:
     cuda_kwargs = {'num_workers': 1,
-                    'pin_memory': True,
-                    'shuffle': True}
+                    'pin_memory': True}
     train_kwargs.update(cuda_kwargs)
 
 
@@ -128,10 +134,10 @@ def transform(image, targets):
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
-train_loader = torch.utils.data.DataLoader(trainDataset, **train_kwargs)
+train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
 valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
-test_loader = torch.utils.data.DataLoader(valDataset, **train_kwargs)
+test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
 
 lossAgent = None
 numClasses = 2

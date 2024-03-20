@@ -22,7 +22,6 @@ def bboxIOU(boxA, boxB, corners = False, widthHeight = False):
 	iou = intersectArea / (unionArea + float_info.epsilon)
 	return iou
 
-
 def convertBbox(box):
 	# converts from widthHeight to corner format
 	x1 = box[0] - box[2]/2
@@ -31,3 +30,6 @@ def convertBbox(box):
 	y2 = box[1] + box[3]/2
 
 	return [x1, y1, x2, y2]
+
+def collate_fn(batch):
+	return tuple(zip(*batch))

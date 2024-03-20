@@ -133,12 +133,12 @@ class YoloLoss(nn.Module):
 		# There are predictions for every pixel for every anchor size
 
 		for index in range(batchSize):
-			imageTargetBoxes = targets["boxes"][index]
+			imageTargetBoxes = targets[index]["boxes"]
 			imageTargetClasses = torch.zeros(self.numClasses)
-			imageTargetClasses[targets["labels"][index][0]] = 1
+			imageTargetClasses[targets[index]["labels"][0]] = 1
 			for i in range(1, len(imageTargetBoxes)):
 				boxClass = torch.zeros(self.numClasses)
-				boxClass[targets["labels"][index][i]-1] = 1
+				boxClass[targets[index]["labels"][i]-1] = 1
 				imageTargetClasses = torch.stack(((imageTargetClasses), boxClass))
 
 			for i in range(len(imageTargetBoxes)):
@@ -161,7 +161,7 @@ class YoloLoss(nn.Module):
 				bestDiff = -1
 				bestMatch = -1
 				for anchor in range(len(self.anchors)):
-					diff = abs(self.anchorAreas[anchor] - targets["area"][index][i])
+					diff = abs(self.anchorAreas[anchor] - targets[index]["area"][i])
 					if diff < bestDiff or bestDiff == -1:
 						bestDiff = diff
 						bestMatch = anchor
@@ -191,7 +191,7 @@ class YoloLoss(nn.Module):
 							targetClassPred[index,anchor,xCoord,yCoord] = targetMatched[5:]
 						else:
 							box = output[index,anchor,xCoord,yCoord,:]
-							bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets["boxes"][index]]
+							bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
 							bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 
 							# Not assigned to GT, ignore prediction (except objectness)
