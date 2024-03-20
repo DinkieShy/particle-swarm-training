@@ -42,27 +42,14 @@ class Net(nn.Module):
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
     for dataBatch, targets in train_loader:
-        # Data (for beet dataset) is in a dict form, needs to be put on device in eval function
-        # because of different formats needed per network
-        data = dataBatch[0]
+        data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
-            data = torch.stack((data, dataBatch[i]), dim=0)
-            
+            data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        
         optimizer.zero_grad()
         if args.network == "darknet":
             model.losses = []
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
-            
-            # Instead of computing loss inside forward pass, need to:
-            #   change concat settings to separate detections by anchor (if training)
-            #   alternatively figure out how to not do that instead
-            #
-            #   compute losses *after* forward pass, using same functions
-            # print(output.shape)
-            # losses = torch.zeros(7, requires_grad=True)
-
             losses = [sum(i) for i in losses]
             loss = losses[0]
 
