@@ -112,7 +112,7 @@ class YoloLoss(nn.Module):
 		if device == -1:
 			device = "cpu"
 		else:
-			device = f"cuda:{device}"
+			device = "cuda"
 
 		x = output[..., 0]
 		y = output[..., 1]
