@@ -84,7 +84,7 @@ class YoloLoss(nn.Module):
 		self.mseLoss = nn.MSELoss()
 		self.bceLoss = nn.BCELoss()
 
-	def forward(self, output, targets, CUDA=False):
+	def forward(self, output, targets):
 		"""
 		Helpful extract from yolov3 paper
 
@@ -108,6 +108,12 @@ class YoloLoss(nn.Module):
 		strideHeight = self.imageSize[1]/self.mapSize[1]
 		output = output.view(batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1], self.bboxAttributes)
 
+		device = output.get_device()
+		if device == -1:
+			device = "cpu"
+		else:
+			device = f"cuda:{device}"
+
 		x = output[..., 0]
 		y = output[..., 1]
 		width = output[..., 2]
@@ -115,20 +121,12 @@ class YoloLoss(nn.Module):
 		conf = output[..., 4]
 		classPred = output[..., 5:]
 
-		targetX = torch.zeros(x.shape)
-		targetY = torch.zeros(x.shape)
-		targetWidth = torch.zeros(x.shape)
-		targetHeight = torch.zeros(x.shape)
-		targetConf = torch.zeros(x.shape)
-		targetClassPred  = torch.zeros(classPred.shape)
-
-		if CUDA:
-			targetX = targetX.cuda()
-			targetY = targetY.cuda()
-			targetWidth = targetWidth.cuda()
-			targetHeight = targetHeight.cuda()
-			targetConf = targetConf.cuda()
-			targetClassPred = targetClassPred.cuda()
+		targetX = torch.zeros(x.shape).to(device)
+		targetY = torch.zeros(x.shape).to(device)
+		targetWidth = torch.zeros(x.shape).to(device)
+		targetHeight = torch.zeros(x.shape).to(device)
+		targetConf = torch.zeros(x.shape).to(device)
+		targetClassPred  = torch.zeros(classPred.shape).to(device)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -150,16 +148,13 @@ class YoloLoss(nn.Module):
 				imageTargetBoxes[i][2] = x2 - x1
 				imageTargetBoxes[i][3] = y2 - y1	
 
-			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1)
-			if CUDA:
-				imageTargets = imageTargets.cuda()
-
+			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1).to(device)
 			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
-			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1]))
+			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1])).to(device)
 			# >0 : pixel overlaps GT box with stored index
 			# -1 : pixel does not correspond to a GT box
-			exactMatches = torch.zeros(mask.shape)
+			exactMatches = torch.zeros(mask.shape).to(device)
 
 			for i in range(len(imageTargets)):
 				# Select anchor with closest area
