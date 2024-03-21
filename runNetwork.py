@@ -15,7 +15,7 @@ from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
 from tqdm import tqdm
-
+import time
 
 class Net(nn.Module):
     def __init__(self):
@@ -53,7 +53,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         optimizer.zero_grad(set_to_none=True)
         if args.network == "darknet":
             model.losses = []
+            modelStart = time.time()
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
+            modelTime = time.time() - modelStart
             losses = [sum(i) for i in losses]
             loss = losses[0]
 
@@ -65,8 +67,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
             f.write(f"{epoch}: {loss.item()}\n")
             f.close()    
 
+        backwardStart = time.time()
         loss.backward()
         optimizer.step()
+        backwardTime = time.time() - backwardStart
+        print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
     return loss
 
 def test(model, test_loader, device):
@@ -144,7 +149,7 @@ if args.network == "darknet":
 elif args.network == "simplenet":
     model = Net().to(device)
 
-optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+optimizer = optim.SGD(model.parameters(), lr=args.lr)
 
 f = open("./trainingLog.txt", "w")
 f.close()
