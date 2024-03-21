@@ -16,6 +16,7 @@ from utils import collate_fn
 
 from tqdm import tqdm
 
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -47,7 +48,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
-        data.to(device)
+        data = data.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         optimizer.zero_grad(set_to_none=True)
         if args.network == "darknet":
