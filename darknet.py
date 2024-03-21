@@ -131,7 +131,7 @@ class YoloLoss(nn.Module):
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
 		# There are predictions for every pixel for every anchor size
-		
+
 		for index in range(batchSize):
 			imageTargetBoxes = targets[index]["boxes"]
 			imageTargetClasses = torch.zeros((1,self.numClasses)).to(device)
@@ -236,8 +236,14 @@ class Darknet(nn.Module):
 		self.net_info, self.moduleList = createModuleList(self.blocks)
 		self.losses = []
 		self.lossFuncs = {}
+		self.iterDone = False
+		self.layersToStore = []
 
 	def forward(self, x, target=None, CUDA=True):
+		if CUDA:
+			device = "cuda"
+		else:
+			device = "cpu"
 		outputs = {} # Store feature maps for route layers later
 		write = False # Flag used to track when to initalise tensor of detection feature maps
 		for index, module in enumerate(self.blocks):
@@ -247,7 +253,8 @@ class Darknet(nn.Module):
 
 			if moduleType == "convolutional" or moduleType == "upsample":
 				x = self.moduleList[index](x)
-				outputs[index] = x
+				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+					outputs[index] = x
 
 			elif moduleType == "route":
 				layers = [int(layer) for layer in module["layers"].split(",")]
@@ -256,17 +263,27 @@ class Darknet(nn.Module):
 
 				if len(layers) == 1:
 					x = outputs[index + (layers[0])]
+					if not self.iterDone:
+						self.layersToStore.append(index+layers[0])
 				else:
 					if layers[1] > 0:
 						layers[1] -= index
+					if not self.iterDone:
+						self.layersToStore.append(index+layers[0])
+						self.layersToStore.append(index+layers[1])
 					featureMaps = (outputs[index + layers[0]], outputs[index + layers[1]])
 					x = torch.cat(featureMaps, 1)
-				outputs[index] = x
+				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+					outputs[index] = x
 
 			elif moduleType == "shortcut":
 				layer = int(module["from"])
 				x = outputs[index-1] + outputs[index+layer]
-				outputs[index] = x
+				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+					outputs[index] = x
+
+				if not self.iterDone:
+					self.layersToStore.append(index+layer)
 
 			elif moduleType == "yolo":
 				anchors = self.moduleList[index][0].anchors
