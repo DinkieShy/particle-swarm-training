@@ -148,13 +148,13 @@ class YoloLoss(nn.Module):
 				imageTargetBoxes[i][2] = x2 - x1
 				imageTargetBoxes[i][3] = y2 - y1	
 
-			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1, device=device)
+			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1)
 			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
 			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1]), device=device)
 			# >0 : pixel overlaps GT box with stored index
 			# -1 : pixel does not correspond to a GT box
-			exactMatches = torch.zeros(mask.shape).to(device)
+			exactMatches = torch.zeros(mask.shape, device=device)
 
 			for i in range(len(imageTargets)):
 				# Select anchor with closest area
