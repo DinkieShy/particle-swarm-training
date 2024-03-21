@@ -14,6 +14,8 @@ from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
+from tqdm import tqdm
+
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -41,7 +43,7 @@ class Net(nn.Module):
     
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
-    for dataBatch, targets in train_loader:
+    for dataBatch, targets in tqdm(train_loader):
         data = dataBatch[0].unsqueeze(0).to(device)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0).to(device)), dim=0)
@@ -124,7 +126,7 @@ def transform(image, targets):
     image = transforms.ToTensor()(image)
     return image, targets
 
-trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
+trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
 train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
 valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
