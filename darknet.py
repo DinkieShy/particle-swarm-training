@@ -253,7 +253,7 @@ class Darknet(nn.Module):
 
 			if moduleType == "convolutional" or moduleType == "upsample":
 				x = self.moduleList[index](x)
-				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+				if (not self.iterDone) or(self.iterDone and index in self.layersToStore):
 					outputs[index] = x
 
 			elif moduleType == "route":
@@ -263,26 +263,27 @@ class Darknet(nn.Module):
 
 				if len(layers) == 1:
 					x = outputs[index + (layers[0])]
-					if not self.iterDone:
+					if (not self.iterDone):
 						self.layersToStore.append(index+layers[0])
 				else:
 					if layers[1] > 0:
 						layers[1] -= index
-					if not self.iterDone:
+					if (not self.iterDone):
 						self.layersToStore.append(index+layers[0])
 						self.layersToStore.append(index+layers[1])
 					featureMaps = (outputs[index + layers[0]], outputs[index + layers[1]])
 					x = torch.cat(featureMaps, 1)
-				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+				if (not self.iterDone) or(self.iterDone and index in self.layersToStore):
 					outputs[index] = x
 
 			elif moduleType == "shortcut":
 				layer = int(module["from"])
 				x = outputs[index-1] + outputs[index+layer]
-				if not self.iterDone or(self.iterDone and index in self.layersToStore):
+				if (not self.iterDone) or (self.iterDone and index in self.layersToStore):
 					outputs[index] = x
 
-				if not self.iterDone:
+				if (not self.iterDone):
+					self.layersToStore.append(index-1)
 					self.layersToStore.append(index+layer)
 
 			elif moduleType == "yolo":
