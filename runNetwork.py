@@ -108,6 +108,7 @@ args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
 torch.manual_seed(args.seed)
+torch.backends.cudnn.benchmark = True
 
 if use_cuda:
     device = torch.device("cuda")
