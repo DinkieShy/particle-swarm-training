@@ -52,7 +52,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
         if args.network == "darknet":
             model.losses = []
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
-            model.epochDone = True
             losses = [sum(i) for i in losses]
             loss = losses[0]
 

@@ -311,6 +311,7 @@ class Darknet(nn.Module):
 						for i in range(len(newLosses)):
 							self.losses[i].append(newLosses[i])
 
+		self.iterDone = True # Only store layer outputs we NEED from now on
 		if self.training:
 			return self.detections, self.losses
 		return self.detections
