@@ -55,7 +55,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         else:
             output = model(data)
-            loss = F.nll_loss(output, targets)        
+            loss = F.nll_loss(output, targets)    
+
+        with open("./trainingLog.txt", "a") as f:
+            f.write(f"{epoch}: {loss.item()}\n")
+            f.close()    
 
         loss.backward()
         optimizer.step()
@@ -137,9 +141,8 @@ elif args.network == "simplenet":
 
 optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-if os.path.exists("./trainingLog.txt"):
-    f = open("./trainingLog.txt", "w")
-    f.close()
+f = open("./trainingLog.txt", "w")
+f.close()
 
 for epoch in range(1, 60):
     loss = train(args, model, device, train_loader, optimizer, epoch)
@@ -147,10 +150,6 @@ for epoch in range(1, 60):
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:
             i['lr'] = args.lr2
-
-    with open("./trainingLog.txt", "a") as f:
-        f.write(f"{epoch}: {loss.item()}\n")
-        f.close()
 
 if isfinite(loss.item()):
     print(loss.item())
