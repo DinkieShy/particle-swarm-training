@@ -121,12 +121,12 @@ class YoloLoss(nn.Module):
 		conf = output[..., 4]
 		classPred = output[..., 5:]
 
-		targetX = torch.zeros(x.shape).to(device)
-		targetY = torch.zeros(x.shape).to(device)
-		targetWidth = torch.zeros(x.shape).to(device)
-		targetHeight = torch.zeros(x.shape).to(device)
-		targetConf = torch.zeros(x.shape).to(device)
-		targetClassPred  = torch.zeros(classPred.shape).to(device)
+		targetX = torch.zeros(x.shape, device=device)
+		targetY = torch.zeros(x.shape, device=device)
+		targetWidth = torch.zeros(x.shape, device=device)
+		targetHeight = torch.zeros(x.shape, device=device)
+		targetConf = torch.zeros(x.shape, device=device)
+		targetClassPred  = torch.zeros(classPred.shape, device=device)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -134,10 +134,10 @@ class YoloLoss(nn.Module):
 
 		for index in range(batchSize):
 			imageTargetBoxes = targets[index]["boxes"]
-			imageTargetClasses = torch.zeros((1,self.numClasses)).to(device)
+			imageTargetClasses = torch.zeros((1,self.numClasses), device=device)
 			imageTargetClasses[0,targets[index]["labels"][0]-1] = 1
 			for i in range(1, len(imageTargetBoxes)):
-				boxClass = torch.zeros(self.numClasses).to(device)
+				boxClass = torch.zeros(self.numClasses, device=device)
 				boxClass[targets[index]["labels"][i]-1] = 1
 				imageTargetClasses = torch.cat(((imageTargetClasses), boxClass.unsqueeze(0)), dim=0)
 
@@ -148,10 +148,10 @@ class YoloLoss(nn.Module):
 				imageTargetBoxes[i][2] = x2 - x1
 				imageTargetBoxes[i][3] = y2 - y1	
 
-			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1).to(device)
+			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1, device=device)
 			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
-			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1])).to(device)
+			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1]), device=device)
 			# >0 : pixel overlaps GT box with stored index
 			# -1 : pixel does not correspond to a GT box
 			exactMatches = torch.zeros(mask.shape).to(device)
