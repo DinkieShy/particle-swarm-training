@@ -195,16 +195,16 @@ class YoloLoss(nn.Module):
 							bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 
 							# Not assigned to GT, ignore prediction (except objectness)
-							x[index,anchor,xCoord,yCoord] *= 0
-							y[index,anchor,xCoord,yCoord] *= 0
-							width[index,anchor,xCoord,yCoord] *= 0
-							height[index,anchor,xCoord,yCoord] *= 0
+							x[index,anchor,xCoord,yCoord] = 0
+							y[index,anchor,xCoord,yCoord] = 0
+							width[index,anchor,xCoord,yCoord] = 0
+							height[index,anchor,xCoord,yCoord] = 0
 							for cls in range(len(classPred[index, anchor,xCoord,yCoord])):
-								classPred[index,anchor,xCoord,yCoord,cls] *= 0
+								classPred[index,anchor,xCoord,yCoord,cls] = 0
 
 							if bboxIOUs[bestFitTarget] > 0.5:
 								# overlaps with GT box, also ignore objectness
-								conf[index,anchor,xCoord,yCoord] *= 0
+								conf[index,anchor,xCoord,yCoord] = 0
 			
 		xLoss = self.mseLoss(x, targetX)
 		yLoss = self.mseLoss(y, targetY)

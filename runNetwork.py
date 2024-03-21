@@ -48,7 +48,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0).to(device)), dim=0)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=True)
         if args.network == "darknet":
             model.losses = []
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
@@ -124,7 +124,7 @@ if use_cuda:
 
 def transform(image, targets):
     image, targets["boxes"] = customTransforms.resize(transforms.ToPILImage()(image), targets["boxes"], (416, 416))
-    image = transforms.ToTensor()(image)
+    image = F.normalize(transforms.ToTensor()(image))
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
