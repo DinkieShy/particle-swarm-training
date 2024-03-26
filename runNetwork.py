@@ -56,8 +56,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
             modelStart = time.time()
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
             modelTime = time.time() - modelStart
-            losses = [sum(i) for i in losses]
-            loss = losses[0]
+            loss = sum(losses)
 
         else:
             output = model(data)

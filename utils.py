@@ -8,8 +8,8 @@ def bboxIOU(boxA, boxB, corners = False, widthHeight = False):
 		boxA = convertBbox(boxA)
 		boxB = convertBbox(boxB)
 
-	intersectWidth = torch.clamp(torch.max(boxA[2], boxB[2]) - torch.min(boxA[0], boxB[0]), min=0)
-	intersectHeight = torch.clamp(torch.max(boxA[3], boxB[3]) - torch.min(boxA[1], boxB[1]), min=0)
+	intersectWidth = torch.max(boxA[2], boxB[2]) - torch.min(boxA[0], boxB[0])
+	intersectHeight = torch.max(boxA[3], boxB[3]) - torch.min(boxA[1], boxB[1])
 	if intersectWidth <= 0 or intersectHeight <= 0:
 		intersectArea = 0
 	else:

@@ -62,6 +62,7 @@ def createModuleList(blocks):
 				pad = 0
 
 			conv = nn.Conv2d(prevChannels, channels, kernelSize, stride, pad, bias=bias)
+			nn.init.xavier_uniform_(conv.weight)
 			newModule.add_module(f"conv_{index}", conv)
 			if batchNormalize:
 				bn = nn.BatchNorm2d(channels)

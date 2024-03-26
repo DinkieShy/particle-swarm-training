@@ -15,6 +15,11 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	# This function takes the detection feature map from the last YOLO layer, and creates a tensor of the transformation between it and the predicted bounding box of the object
 
+	if not CUDA:
+		device = "cpu"
+	else:
+		device = "cuda"
+
 	batchSize = prediction.size(0)
 	stride = inputDim // prediction.size(2)
 	gridSize = inputDim // stride 
@@ -37,21 +42,14 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	a, b = np.meshgrid(grid, grid) # Makes a list of coordinate matricies
 
 	# Tensor.view shares data with underlying tensor, in this case it applies the prediction to the grid we just defined
-	if CUDA:
-		xOffset = torch.FloatTensor(a).view(-1, 1).cuda()
-		yOffset = torch.FloatTensor(b).view(-1, 1).cuda()
-	else:
-		xOffset = torch.FloatTensor(a).view(-1, 1)
-		yOffset = torch.FloatTensor(b).view(-1, 1)
+	xOffset = torch.FloatTensor(a, device=device).view(-1, 1)
+	yOffset = torch.FloatTensor(b, device=device).view(-1, 1)
 
 	xyOffset = torch.cat((xOffset, yOffset), 1).repeat(1, numAnchors).view(-1,2).unsqueeze(0)
 
 	prediction[:,:,:2] += xyOffset
 
-	if CUDA:
-		anchors = torch.FloatTensor(anchors).cuda()
-	else:
-		anchors = torch.FloatTensor(anchors)
+	anchors = torch.FloatTensor(anchors, device=device)
 
 	anchors = anchors.repeat(gridSize**2, 1).unsqueeze(0)
 	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
@@ -81,8 +79,8 @@ class YoloLoss(nn.Module):
 		self.lambdaConf = 1.0
 		self.lambdaClass = 1.0
 
-		self.mseLoss = nn.MSELoss()
-		self.bceLoss = nn.BCELoss()
+		self.mseLoss = nn.MSELoss(reduction="sum")
+		self.bceLoss = nn.BCELoss(reduction="sum")
 
 	def forward(self, output, targets):
 		"""
@@ -101,6 +99,14 @@ class YoloLoss(nn.Module):
 		tions, only objectness
 		"""
 
+		device = output.get_device()
+		if device == -1:
+			device = "cpu"
+		else:
+			device = "cuda"
+
+		output = torch.nan_to_num(output)
+
 		# Anchor sizes are determined via k-means clustering- need to do this on our dataset?
 
 		batchSize = output.size(0)
@@ -108,25 +114,22 @@ class YoloLoss(nn.Module):
 		strideHeight = self.imageSize[1]/self.mapSize[1]
 		output = output.view(batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1], self.bboxAttributes)
 
-		device = output.get_device()
-		if device == -1:
-			device = "cpu"
-		else:
-			device = "cuda"
+		# x = output[..., 0]
+		# y = output[..., 1]
+		# width = output[..., 2]
+		# height = output[..., 3]
+		# conf = output[..., 4]
+		# classPred = output[..., 5:]
 
-		x = output[..., 0]
-		y = output[..., 1]
-		width = output[..., 2]
-		height = output[..., 3]
-		conf = output[..., 4]
-		classPred = output[..., 5:]
+		# targetX = torch.zeros(output[..., 0].shape, device=device)
+		# targetY = torch.zeros(targetX.shape, device=device)
+		# targetWidth = torch.zeros(targetX.shape, device=device)
+		# targetHeight = torch.zeros(targetX.shape, device=device)
+		# targetConf = torch.zeros(targetX.shape, device=device)
+		# targetClassPred  = torch.zeros(output[..., 5:].shape, device=device)
 
-		targetX = torch.zeros(x.shape, device=device)
-		targetY = torch.zeros(x.shape, device=device)
-		targetWidth = torch.zeros(x.shape, device=device)
-		targetHeight = torch.zeros(x.shape, device=device)
-		targetConf = torch.zeros(x.shape, device=device)
-		targetClassPred  = torch.zeros(classPred.shape, device=device)
+		bboxTarget = torch.zeros(output[...,:4].shape, device=device)
+		objectClassTarget = torch.zeros(output[...,4:].shape, device=device)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -177,48 +180,39 @@ class YoloLoss(nn.Module):
 			for xCoord in range(self.mapSize[0]):
 				for yCoord in range(self.mapSize[1]):
 					for anchor in range(len(self.anchors)):
-						x[index,anchor,xCoord,yCoord] -= xCoord
-						y[index,anchor,xCoord,yCoord] -= yCoord
+						output[index,anchor,xCoord,yCoord,0] -= xCoord
+						output[index,anchor,xCoord,yCoord,1] -= yCoord
 
 						if exactMatches[index, anchor, xCoord, yCoord] == 1:
 							# exact match 
 							targetMatched = imageTargets[int(mask[index, anchor, xCoord, yCoord])]
-							targetX[index,anchor,xCoord,yCoord] = targetMatched[0]-xCoord
-							targetY[index,anchor,xCoord,yCoord] = targetMatched[1]-yCoord
-							targetWidth[index,anchor,xCoord,yCoord] = targetMatched[2]
-							targetHeight[index,anchor,xCoord,yCoord] = targetMatched[3]
-							targetConf[index,anchor,xCoord,yCoord] = 1
-							targetClassPred[index,anchor,xCoord,yCoord] = targetMatched[5:]
+							bboxTarget[index,anchor,xCoord,yCoord,0] = targetMatched[0]-xCoord
+							bboxTarget[index,anchor,xCoord,yCoord,1] = targetMatched[1]-yCoord
+							bboxTarget[index,anchor,xCoord,yCoord,2] = targetMatched[2]
+							bboxTarget[index,anchor,xCoord,yCoord,3] = targetMatched[3]
+							objectClassTarget[index,anchor,xCoord,yCoord,0] = 1
+							objectClassTarget[index,anchor,xCoord,yCoord,1:] = targetMatched[5:]
 						else:
-							box = output[index,anchor,xCoord,yCoord,:]
+							box = output[index,anchor,xCoord,yCoord,:4]
 							bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
 							bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 
-							# Not assigned to GT, ignore prediction (except objectness)
-							x[index,anchor,xCoord,yCoord] = 0
-							y[index,anchor,xCoord,yCoord] = 0
-							width[index,anchor,xCoord,yCoord] = 0
-							height[index,anchor,xCoord,yCoord] = 0
-							for cls in range(len(classPred[index, anchor,xCoord,yCoord])):
-								classPred[index,anchor,xCoord,yCoord,cls] = 0
+							# Not assigned to GT, ignore prediction
+							conf = output[index,anchor,xCoord,yCoord,4]
+							output[index,anchor,xCoord,yCoord] *= 0
 
-							if bboxIOUs[bestFitTarget] > 0.5:
-								# overlaps with GT box, also ignore objectness
-								conf[index,anchor,xCoord,yCoord] = 0
+							if bboxIOUs[bestFitTarget] < 0.5:
+								# doesn't overlap with GT box, don't ignore objectness
+								output[index,anchor,xCoord,yCoord,4] = conf
 			
-		xLoss = self.mseLoss(x, targetX)
-		yLoss = self.mseLoss(y, targetY)
-		widthLoss = self.mseLoss(width, targetWidth)
-		heightLoss = self.mseLoss(height, targetHeight)
-		confLoss = self.bceLoss(conf, targetConf)
-		classPredLoss = self.bceLoss(classPred, targetClassPred)
+		bboxPred = output[...,:4]
+		confClassPred = output[...,4:]
+		bboxLoss = self.mseLoss(bboxPred, bboxTarget)
+		confLoss = self.bceLoss(confClassPred, objectClassTarget)
 
-		loss =  (xLoss + yLoss) * self.lambaXY + \
-				(widthLoss + heightLoss) * self.lambdaWH + \
-				confLoss * self.lambdaConf + \
-				classPredLoss * self.lambdaClass
+		loss = bboxLoss + confLoss
 
-		return loss, xLoss.item(), yLoss.item(), widthLoss.item(), heightLoss.item(), confLoss.item(), classPredLoss.item()
+		return loss
 
 def filterUnique(tensor):
 	npTensor = tensor.cpu().numpy()
@@ -240,10 +234,6 @@ class Darknet(nn.Module):
 		self.layersToStore = []
 
 	def forward(self, x, target=None, CUDA=True):
-		if CUDA:
-			device = "cuda"
-		else:
-			device = "cpu"
 		outputs = {} # Store feature maps for route layers later
 		write = False # Flag used to track when to initalise tensor of detection feature maps
 		for index, module in enumerate(self.blocks):
@@ -302,15 +292,13 @@ class Darknet(nn.Module):
 					self.detections = x
 					write = True
 					if self.training:
-						losses = list(self.lossFuncs[mapSize[2]](x, target))
-						for i in range(len(losses)):
-							self.losses.append([losses[i]])
+						loss = self.lossFuncs[mapSize[2]](x, target)
+						self.losses.append(loss)
 				else:
 					self.detections = torch.cat((self.detections, x), 1)
 					if self.training:
-						newLosses = list(self.lossFuncs[mapSize[2]](x, target))
-						for i in range(len(newLosses)):
-							self.losses[i].append(newLosses[i])
+						newLoss = self.lossFuncs[mapSize[2]](x, target)
+						self.losses.append(newLoss)
 
 		self.iterDone = True # Only store layer outputs we NEED from now on
 		if self.training:
