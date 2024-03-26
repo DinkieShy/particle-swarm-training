@@ -14,8 +14,8 @@ from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
-from tqdm import tqdm
-import time
+# from tqdm import tqdm
+# import time
 
 class Net(nn.Module):
     def __init__(self):
@@ -44,7 +44,7 @@ class Net(nn.Module):
     
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
-    for dataBatch, targets in tqdm(train_loader):
+    for dataBatch, targets in train_loader:
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -53,9 +53,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         optimizer.zero_grad(set_to_none=True)
         if args.network == "darknet":
             model.losses = []
-            modelStart = time.time()
+            # modelStart = time.time()
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
-            modelTime = time.time() - modelStart
+            # modelTime = time.time() - modelStart
             loss = sum(losses)
 
         else:
@@ -66,11 +66,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
             f.write(f"{epoch}: {loss.item()}\n")
             f.close()    
 
-        backwardStart = time.time()
+        # backwardStart = time.time()
         loss.backward()
         optimizer.step()
-        backwardTime = time.time() - backwardStart
-        print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
+        # backwardTime = time.time() - backwardStart
+        # print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
     return loss
 
 def test(model, test_loader, device):
