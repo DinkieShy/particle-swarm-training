@@ -42,14 +42,14 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	a, b = np.meshgrid(grid, grid) # Makes a list of coordinate matricies
 
 	# Tensor.view shares data with underlying tensor, in this case it applies the prediction to the grid we just defined
-	xOffset = torch.Tensor(a, dtype=torch.float32, device=device).view(-1, 1)
-	yOffset = torch.Tensor(b, dtype=torch.float32, device=device).view(-1, 1)
+	xOffset = torch.as_tensor(a, dtype=torch.float32, device=device).view(-1, 1)
+	yOffset = torch.as_tensor(b, dtype=torch.float32, device=device).view(-1, 1)
 
 	xyOffset = torch.cat((xOffset, yOffset), 1).repeat(1, numAnchors).view(-1,2).unsqueeze(0)
 
 	prediction[:,:,:2] += xyOffset
 
-	anchors = torch.Tensor(anchors, dtype=torch.float32, device=device)
+	anchors = torch.tensor(anchors, dtype=torch.float32, device=device)
 
 	anchors = anchors.repeat(gridSize**2, 1).unsqueeze(0)
 	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
