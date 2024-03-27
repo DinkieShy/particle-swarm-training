@@ -129,14 +129,13 @@ if use_cuda:
 
 
 def transform(image, targets):
-    image, targets["boxes"] = customTransforms.resize(transforms.ToPILImage()(image), targets["boxes"], (416, 416))
     image = F.normalize(transforms.ToTensor()(image))
     return image, targets
 
-trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment416/val.txt", transform=transform)
 train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
-valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+valDataset = AugmentedBeetDataset("/datasets/LincolnAugment416/val.txt", transform=transform)
 test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
 
 lossAgent = None
