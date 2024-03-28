@@ -112,7 +112,7 @@ class YoloLoss(nn.Module):
 		batchSize = output.size(0)
 		strideWidth = self.imageSize[0]/self.mapSize[0]
 		strideHeight = self.imageSize[1]/self.mapSize[1]
-		output = output.view(batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1], self.bboxAttributes)
+		# output = output.view(batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1], self.bboxAttributes)
 
 		# x = output[..., 0]
 		# y = output[..., 1]
@@ -128,8 +128,8 @@ class YoloLoss(nn.Module):
 		# targetConf = torch.zeros(targetX.shape, device=device)
 		# targetClassPred  = torch.zeros(output[..., 5:].shape, device=device)
 
-		bboxTarget = torch.zeros(output[...,:4].shape, device=device)
-		objectClassTarget = torch.zeros(output[...,4:].shape, device=device)
+		bboxTarget = torch.zeros(output[...,:4].shape, device=device, requires_grad=False)
+		objectClassTarget = torch.zeros(output[...,4:].shape, device=device, requires_grad=False)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -137,7 +137,7 @@ class YoloLoss(nn.Module):
 
 		for index in range(batchSize):
 			imageTargetBoxes = targets[index]["boxes"]
-			imageTargetClasses = torch.zeros((1,self.numClasses), device=device)
+			imageTargetClasses = torch.zeros((1,self.numClasses), device=device, requires_grad=False)
 			imageTargetClasses[0,targets[index]["labels"][0]-1] = 1
 			for i in range(1, len(imageTargetBoxes)):
 				boxClass = torch.zeros(self.numClasses, device=device)
@@ -154,10 +154,10 @@ class YoloLoss(nn.Module):
 			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1)
 			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
-			mask = torch.zeros((batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1]), device=device)
+			mask = torch.zeros(output.shape[:2], device=device, requires_grad=False)
 			# >0 : pixel overlaps GT box with stored index
 			# -1 : pixel does not correspond to a GT box
-			exactMatches = torch.zeros(mask.shape, device=device)
+			exactMatches = torch.zeros(mask.shape, device=device, requires_grad=False)
 
 			for i in range(len(imageTargets)):
 				# Select anchor with closest area
@@ -171,39 +171,32 @@ class YoloLoss(nn.Module):
 
 				targetCenter = [int((imageTargets[i][2]-imageTargets[i][0])/strideWidth), int((imageTargets[i][3]-imageTargets[i][1])/strideHeight)]
 
-				mask[index,bestMatch,targetCenter[0],targetCenter[1]] = i
-				exactMatches[index, bestMatch, targetCenter[0], targetCenter[1]] = 1
+				mask[index,bestMatch*targetCenter[0]+targetCenter[1]] = i
+				exactMatches[index, bestMatch*targetCenter[0]+targetCenter[1]] = 1
 				# mask[index, anchor, xCenter, yCenter] = 1 if *that* pixel corresponds to a gt box
 				# Only this pixel incurs x/y/class loss
 				# For other pixels, no loss incurred if 0.5 IoU with a gt box, else only objectness loss
 
-			for xCoord in range(self.mapSize[0]):
-				for yCoord in range(self.mapSize[1]):
-					for anchor in range(len(self.anchors)):
-						output[index,anchor,xCoord,yCoord,0] -= xCoord
-						output[index,anchor,xCoord,yCoord,1] -= yCoord
+			for i in range(output.shape[1]):
+				if exactMatches[index,i] == 1:
+					# exact match 
+					targetMatched = imageTargets[int(mask[index,i])]
+					bboxTarget[index,i,2] = targetMatched[2]
+					bboxTarget[index,i,3] = targetMatched[3]
+					objectClassTarget[index,i,0] = 1
+					objectClassTarget[index,i,1:] = targetMatched[5:]
+				else:
+					box = output[index,i,:4]
+					bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
+					bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 
-						if exactMatches[index, anchor, xCoord, yCoord] == 1:
-							# exact match 
-							targetMatched = imageTargets[int(mask[index, anchor, xCoord, yCoord])]
-							bboxTarget[index,anchor,xCoord,yCoord,0] = targetMatched[0]-xCoord
-							bboxTarget[index,anchor,xCoord,yCoord,1] = targetMatched[1]-yCoord
-							bboxTarget[index,anchor,xCoord,yCoord,2] = targetMatched[2]
-							bboxTarget[index,anchor,xCoord,yCoord,3] = targetMatched[3]
-							objectClassTarget[index,anchor,xCoord,yCoord,0] = 1
-							objectClassTarget[index,anchor,xCoord,yCoord,1:] = targetMatched[5:]
-						else:
-							box = output[index,anchor,xCoord,yCoord,:4]
-							bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
-							bestFitTarget = bboxIOUs.index(max(bboxIOUs))
+					# Not assigned to GT, ignore prediction
+					conf = output[index,i,4]
+					output[index,i] *= 0
 
-							# Not assigned to GT, ignore prediction
-							conf = output[index,anchor,xCoord,yCoord,4]
-							output[index,anchor,xCoord,yCoord] *= 0
-
-							if bboxIOUs[bestFitTarget] < 0.5:
-								# doesn't overlap with GT box, don't ignore objectness
-								output[index,anchor,xCoord,yCoord,4] = conf
+					if bboxIOUs[bestFitTarget] < 0.5:
+						# doesn't overlap with GT box, don't ignore objectness
+						output[index,i,4] = conf
 			
 		bboxPred = output[...,:4]
 		confClassPred = output[...,4:]
