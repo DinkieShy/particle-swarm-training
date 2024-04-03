@@ -57,8 +57,10 @@ class BeetDataset(Dataset):
 
 		if width > height:
 			image, boxes = CustomTransforms.rotate(image, boxes, -math.pi/2)
-		image, boxes = CustomTransforms.resize(image, boxes, (416, 416))
-
+			
+		if image.size[0]%32 != 0 or image.size[1]%32 != 0:
+			image, boxes = CustomTransforms.resize(image, boxes, (image.size[0]+image.size[0]%32,image.size[1]+image.size[1]%32))
+	
 		# displayImage = ImageDraw.Draw(image)
 		# for box in boxes:
 		# 	displayImage.rectangle(box, fill=None, outline="red")
@@ -90,7 +92,6 @@ class BeetDataset(Dataset):
 
 		# image = F.normalize(transforms.ToTensor()(image))
 		image = transforms.ToTensor()(image)
-
 
 		target = {}
 		target["boxes"] = boxes
@@ -151,15 +152,15 @@ def main():
 
 	toImage = convertToImageTransform()
 
-	if not os.path.exists("/home/grey/datasets/LincolnAugment416/"):
-		os.mkdir("/home/grey/datasets/LincolnAugment416/")
+	if not os.path.exists("/home/grey/datasets/LincolnAugment/"):
+		os.mkdir("/home/grey/datasets/LincolnAugment/")
 
-	if os.path.exists("/home/grey/datasets/LincolnAugment416/all"):
-		listDir = os.listdir("/home/grey/datasets/LincolnAugment416/all")
+	if os.path.exists("/home/grey/datasets/LincolnAugment/all"):
+		listDir = os.listdir("/home/grey/datasets/LincolnAugment/all")
 		for i in listDir:
-			os.remove(os.path.join("/home/grey/datasets/LincolnAugment416/all", i))
-		os.rmdir("/home/grey/datasets/LincolnAugment416/all")
-	os.mkdir("/home/grey/datasets/LincolnAugment416/all")
+			os.remove(os.path.join("/home/grey/datasets/LincolnAugment/all", i))
+		os.rmdir("/home/grey/datasets/LincolnAugment/all")
+	os.mkdir("/home/grey/datasets/LincolnAugment/all")
 
 	trainDS = BeetDataset(readImageListFile("/datasets/sugar_beet_all/train.txt"))
 	trainDS.training = True
@@ -167,7 +168,7 @@ def main():
 	testDS = BeetDataset(readImageListFile("/datasets/sugar_beet_all/test.txt"))
 
 	subSets = [trainDS, valDS, testDS]
-	subsetFiles = ["/datasets/LincolnAugment416/train.txt", "/datasets/LincolnAugment416/val.txt", "/datasets/LincolnAugment416/test.txt"]
+	subsetFiles = ["/datasets/LincolnAugment/train.txt", "/datasets/LincolnAugment/val.txt", "/datasets/LincolnAugment/test.txt"]
 	for i in subsetFiles:
 		file = open(i, "w")
 		file.close()
@@ -178,36 +179,48 @@ def main():
 			imageTensor, baseTargets = subSets[ii][i]
 			baseImage = toImage(imageTensor)
 			imageFilename = subSets[ii].images[i].split("/")[-1]
-			imageFiles.append(f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-base.{imageFilename[-3:]}")
+			imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-base.{imageFilename[-3:]}")
 			saveImageTensor(imageTensor, imageFiles[-1])
-			torch.save(baseTargets, f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-base.csv")
+			torch.save(baseTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-base.csv")
 
 			if subSets[ii].training:
 				gaussImage, _ = CustomTransforms.gaussianNoise(baseImage, baseTargets["boxes"])
-				imageFiles.append(f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-gauss.{imageFilename[-3:]}")
+				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-gauss.{imageFilename[-3:]}")
 				gaussImage.save(imageFiles[-1])
-				torch.save(baseTargets, f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-gauss.csv")
+				torch.save(baseTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-gauss.csv")
 
 				rotateImage, rotateBoxes = CustomTransforms.rotate(baseImage, baseTargets["boxes"], math.pi/6)
+				if rotateImage.size[0]%32 != 0 or rotateImage.size[1]%32 != 0:
+					rotateImage, rotateBoxes = CustomTransforms.resize(rotateImage, rotateBoxes, (rotateImage.size[0]+rotateImage.size[0]%32,rotateImage.size[1]+rotateImage.size[1]%32))
 				rotateTargets = baseTargets.copy()
 				rotateTargets["boxes"] = torch.as_tensor(rotateBoxes, dtype=torch.float32)
-				imageFiles.append(f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-rotate.{imageFilename[-3:]}")
+				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-rotate.{imageFilename[-3:]}")
 				rotateImage.save(imageFiles[-1])
-				torch.save(rotateTargets, f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-rotate.csv")
+				torch.save(rotateTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-rotate.csv")
+
+				# displayImage = ImageDraw.Draw(rotateImage)
+				# for box in rotateBoxes:
+				# 	displayImage.rectangle(box, fill=None, outline="red")
+				# rotateImage.show()
+				# input()
 
 				shearImage, shearBoxes = CustomTransforms.shear(baseImage, baseTargets["boxes"], 0.125, useXAxis = np.random.rand(1) > 0.5)
+				if shearImage.size[0]%32 != 0 or shearImage.size[1]%32 != 0:
+					shearImage, shearBoxes = CustomTransforms.resize(shearImage, shearBoxes, (shearImage.size[0]+shearImage.size[0]%32,shearImage.size[1]+shearImage.size[1]%32))
 				shearTargets = baseTargets.copy()
 				shearTargets["boxes"] = torch.as_tensor(shearBoxes, dtype=torch.float32)
-				imageFiles.append(f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-shear.{imageFilename[-3:]}")
+				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shear.{imageFilename[-3:]}")
 				shearImage.save(imageFiles[-1])
-				torch.save(shearTargets, f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-shear.csv")
+				torch.save(shearTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shear.csv")
 
 				shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.shearAndRotate(baseImage, baseTargets["boxes"], 0.125, np.random.rand(1) > 0.5, math.pi/6)
+				if shearAndRotateImage.size[0]%32 != 0 or shearAndRotateImage.size[1]%32 != 0:
+					shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.resize(shearAndRotateImage, shearAndRotateBoxes, (shearAndRotateImage.size[0]+shearAndRotateImage.size[0]%32,shearAndRotateImage.size[1]+shearAndRotateImage.size[1]%32))
 				shearAndRotateTargets = baseTargets.copy()
 				shearAndRotateTargets["boxes"] = torch.as_tensor(shearAndRotateBoxes, dtype=torch.float32)
-				imageFiles.append(f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-shearAndRotate.{imageFilename[-3:]}")
+				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shearAndRotate.{imageFilename[-3:]}")
 				shearAndRotateImage.save(imageFiles[-1])
-				torch.save(shearAndRotateTargets, f"/datasets/LincolnAugment416/all/{imageFilename[:-4]}-shearAndRotate.csv")
+				torch.save(shearAndRotateTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shearAndRotate.csv")
 
 			with open(subsetFiles[ii], "a") as file:
 				for i in imageFiles:

@@ -51,7 +51,7 @@ def createModuleList(blocks):
 			bias = not batchNormalize
 			channels = int(block["filters"])
 			if blocks[index+1]["type"] == "yolo":
-				channels = (int(netInfo["numClasses"]) + 5) * 3
+				channels = (int(netInfo["numClasses"]) + 5) * len(blocks[index+1]["mask"].split(","))
 			kernelSize = int(block["size"])
 			stride = int(block["stride"])
 			padding = int(block["pad"])
@@ -76,7 +76,7 @@ def createModuleList(blocks):
 
 		elif block["type"] == "upsample":
 			stride = int(block["stride"])
-			upsample = nn.Upsample(scale_factor=2, mode="bilinear")
+			upsample = nn.Upsample(scale_factor=stride, mode="bilinear")
 			newModule.add_module(f"upsample_{index}", upsample)
 
 		elif block["type"] == "route":
@@ -114,6 +114,11 @@ def createModuleList(blocks):
 			anchors = [anchors[i] for i in masks]
 
 			detection = YoloDetection(anchors)
+			strideW = int(netInfo["width"]) // prevChannels
+			strideH = int(netInfo["height"]) // prevChannels
+			gridSize = (int(netInfo["width"]) // strideW, int(netInfo["height"]) // strideH)
+			activation = nn.AdaptiveAvgPool2d(gridSize)
+			newModule.add_module(f"adaptive_avg_pool_{index}", activation)
 			newModule.add_module(f"detection_{index}", detection)
 
 		moduleList.append(newModule)

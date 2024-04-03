@@ -20,26 +20,29 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	else:
 		device = "cuda"
 
+
+	# print(prediction.shape)
 	batchSize = prediction.size(0)
-	stride = inputDim // prediction.size(2)
-	gridSize = inputDim // stride 
+	strideW = inputDim[0] // prediction.size(2)
+	strideH = inputDim[1] // prediction.size(2)
+	gridSize = (inputDim[0] // strideW, inputDim[1] // strideH)
 	bboxAttributes = 5 + numClasses
 	numAnchors = len(anchors)
 
-	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize*gridSize)
+	# print(batchSize, bboxAttributes*numAnchors, gridSize[0]*gridSize[1])
+	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize[0]*gridSize[1])
 	prediction = prediction.transpose(1, 2).contiguous()
-	prediction = prediction.view(batchSize, gridSize*gridSize*numAnchors, bboxAttributes)
+	prediction = prediction.view(batchSize, gridSize[0]*gridSize[1]*numAnchors, bboxAttributes)
 
 	# Anchors are defined in reference to input image size, rescale to fit prediction feature map
-	anchors = [(anchor[0]/stride, anchor[1]/stride) for anchor in anchors]
+	anchors = [(anchor[0]/strideW, anchor[1]/strideH) for anchor in anchors]
 
 	# Apply sigmoid to centreX, centreY and objectness score
 	prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
 	prediction[:,:,1] = torch.sigmoid(prediction[:,:,1])
 	prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
 
-	grid = np.arange(gridSize)
-	a, b = np.meshgrid(grid, grid) # Makes a list of coordinate matricies
+	a, b = np.meshgrid(np.arange(gridSize[0]), np.arange(gridSize[1])) # Makes a list of coordinate matricies
 
 	# Tensor.view shares data with underlying tensor, in this case it applies the prediction to the grid we just defined
 	xOffset = torch.as_tensor(a, dtype=torch.float32, device=device).view(-1, 1)
@@ -51,13 +54,16 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	anchors = torch.tensor(anchors, dtype=torch.float32, device=device)
 
-	anchors = anchors.repeat(gridSize**2, 1).unsqueeze(0)
+	anchors = anchors.repeat(gridSize[0]*gridSize[1], 1).unsqueeze(0)
 	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
 
 	prediction[:,:,5:5 + numClasses] = torch.sigmoid(prediction[:,:,5:5 + numClasses])
 
 	# resize to image 
-	prediction[:,:,:4] *= stride
+	prediction[:,:,0] *= strideW
+	prediction[:,:,2] *= strideW
+	prediction[:,:,1] *= strideH
+	prediction[:,:,3] *= strideH
 
 	return prediction
 
@@ -254,6 +260,8 @@ class Darknet(nn.Module):
 					if (not self.iterDone):
 						self.layersToStore.append(index+layers[0])
 						self.layersToStore.append(index+layers[1])
+					# Dear me:	if you're looking at an error where dimensions don't match up,
+					# 			check the input size is divisible by 32
 					featureMaps = (outputs[index + layers[0]], outputs[index + layers[1]])
 					x = torch.cat(featureMaps, 1)
 				if (not self.iterDone) or(self.iterDone and index in self.layersToStore):
@@ -270,8 +278,9 @@ class Darknet(nn.Module):
 					self.layersToStore.append(index+layer)
 
 			elif moduleType == "yolo":
-				anchors = self.moduleList[index][0].anchors
-				inputDim = int(self.net_info["height"])
+				x = self.moduleList[index][0](x)
+				anchors = self.moduleList[index][1].anchors
+				inputDim = (int(self.net_info["width"]), int(self.net_info["height"]))
 				numClasses = int(self.net_info["numClasses"])
 				mapSize = x.shape
 

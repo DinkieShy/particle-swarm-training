@@ -132,16 +132,16 @@ def transform(image, targets):
     image = F.normalize(transforms.ToTensor()(image))
     return image, targets
 
-trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment416/val.txt", transform=transform)
+trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
 train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
-valDataset = AugmentedBeetDataset("/datasets/LincolnAugment416/val.txt", transform=transform)
+valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
 test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
 
 lossAgent = None
 numClasses = 2
 if args.network == "darknet":
-    cfgPath = os.path.abspath("./cfg/yolov3.cfg")
+    cfgPath = os.path.abspath("./cfg/yolov3Custom.cfg")
     assert os.path.exists(cfgPath)
     model = Darknet(cfgPath).to(device)
 elif args.network == "simplenet":

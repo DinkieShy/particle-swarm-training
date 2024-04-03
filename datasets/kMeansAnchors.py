@@ -33,6 +33,9 @@ def initaliseClusters(annotations, k):
 
     return clusters
 
+def sortClusters(cluster):
+    return cluster[0]*cluster[1]
+
 def main(k, annotations):
     done = False
     annotations = annotations.numpy()
@@ -60,8 +63,9 @@ def main(k, annotations):
             # something changed, redo
             clusters = newClusters
 
-        print(clusters)
-        print(f"Avg IOU: {totalIOU/annotations.shape[0]}")
+    clusters = sorted(clusters, key=lambda x: x[0]*x[1])
+    print(clusters)
+    print(f"Avg IOU: {totalIOU/annotations.shape[0]}")
 
     return clusters, totalIOU/annotations.shape[0]
 
@@ -105,8 +109,9 @@ def experiment():
     elif args.minK is not None and args.maxK is not None:
         results = {}
         for k in range(args.minK, args.maxK+1):
+            print(f"\nRunning with {k} clusters...")
             _, IOU = main(k, annotations)
-            print(f"\nAverage IOU for {k} clusters: {IOU}\n\n")
+            # print(f"\nAverage IOU for {k} clusters: {IOU}\n\n")
             results[k] = IOU
 
         print(results)
