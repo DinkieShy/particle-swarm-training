@@ -58,8 +58,9 @@ class BeetDataset(Dataset):
 		if width > height:
 			image, boxes = CustomTransforms.rotate(image, boxes, -math.pi/2)
 			
-		if image.size[0]%32 != 0 or image.size[1]%32 != 0:
-			image, boxes = CustomTransforms.resize(image, boxes, (image.size[0]+image.size[0]%32,image.size[1]+image.size[1]%32))
+		image, boxes = CustomTransforms.resize(image, boxes, (800, 1216))
+		# if image.size[0]%32 != 0 or image.size[1]%32 != 0:
+		# 	image, boxes = CustomTransforms.resize(image, boxes, (image.size[0]+image.size[0]%32,image.size[1]+image.size[1]%32))
 	
 		# displayImage = ImageDraw.Draw(image)
 		# for box in boxes:
@@ -190,8 +191,9 @@ def main():
 				torch.save(baseTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-gauss.csv")
 
 				rotateImage, rotateBoxes = CustomTransforms.rotate(baseImage, baseTargets["boxes"], math.pi/6)
-				if rotateImage.size[0]%32 != 0 or rotateImage.size[1]%32 != 0:
-					rotateImage, rotateBoxes = CustomTransforms.resize(rotateImage, rotateBoxes, (rotateImage.size[0]+rotateImage.size[0]%32,rotateImage.size[1]+rotateImage.size[1]%32))
+				rotateImage, rotateBoxes = CustomTransforms.resize(rotateImage, rotateBoxes, (800, 1216))
+				# if rotateImage.size[0]%32 != 0 or rotateImage.size[1]%32 != 0:
+				# 	rotateImage, rotateBoxes = CustomTransforms.resize(rotateImage, rotateBoxes, (rotateImage.size[0]+rotateImage.size[0]%32,rotateImage.size[1]+rotateImage.size[1]%32))
 				rotateTargets = baseTargets.copy()
 				rotateTargets["boxes"] = torch.as_tensor(rotateBoxes, dtype=torch.float32)
 				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-rotate.{imageFilename[-3:]}")
@@ -205,8 +207,9 @@ def main():
 				# input()
 
 				shearImage, shearBoxes = CustomTransforms.shear(baseImage, baseTargets["boxes"], 0.125, useXAxis = np.random.rand(1) > 0.5)
-				if shearImage.size[0]%32 != 0 or shearImage.size[1]%32 != 0:
-					shearImage, shearBoxes = CustomTransforms.resize(shearImage, shearBoxes, (shearImage.size[0]+shearImage.size[0]%32,shearImage.size[1]+shearImage.size[1]%32))
+				shearImage, shearBoxes = CustomTransforms.resize(shearImage, shearBoxes, (800, 1216))
+				# if shearImage.size[0]%32 != 0 or shearImage.size[1]%32 != 0:
+				# 	shearImage, shearBoxes = CustomTransforms.resize(shearImage, shearBoxes, (shearImage.size[0]+shearImage.size[0]%32,shearImage.size[1]+shearImage.size[1]%32))
 				shearTargets = baseTargets.copy()
 				shearTargets["boxes"] = torch.as_tensor(shearBoxes, dtype=torch.float32)
 				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shear.{imageFilename[-3:]}")
@@ -214,8 +217,9 @@ def main():
 				torch.save(shearTargets, f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shear.csv")
 
 				shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.shearAndRotate(baseImage, baseTargets["boxes"], 0.125, np.random.rand(1) > 0.5, math.pi/6)
-				if shearAndRotateImage.size[0]%32 != 0 or shearAndRotateImage.size[1]%32 != 0:
-					shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.resize(shearAndRotateImage, shearAndRotateBoxes, (shearAndRotateImage.size[0]+shearAndRotateImage.size[0]%32,shearAndRotateImage.size[1]+shearAndRotateImage.size[1]%32))
+				shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.resize(shearAndRotateImage, shearAndRotateBoxes, (800, 1216))
+				# if shearAndRotateImage.size[0]%32 != 0 or shearAndRotateImage.size[1]%32 != 0:
+				# 	shearAndRotateImage, shearAndRotateBoxes = CustomTransforms.resize(shearAndRotateImage, shearAndRotateBoxes, (shearAndRotateImage.size[0]+shearAndRotateImage.size[0]%32,shearAndRotateImage.size[1]+shearAndRotateImage.size[1]%32))
 				shearAndRotateTargets = baseTargets.copy()
 				shearAndRotateTargets["boxes"] = torch.as_tensor(shearAndRotateBoxes, dtype=torch.float32)
 				imageFiles.append(f"/datasets/LincolnAugment/all/{imageFilename[:-4]}-shearAndRotate.{imageFilename[-3:]}")

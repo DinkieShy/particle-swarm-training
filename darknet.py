@@ -78,13 +78,6 @@ class YoloLoss(nn.Module):
 		self.mapSize = mapSize
 		self.imageSize = (int(imageSize[0]), int(imageSize[1]))
 
-		self.nmsConf = 0
-		self.confThreshold = 0
-		self.lambaXY = 2.5
-		self.lambdaWH = 2.5
-		self.lambdaConf = 1.0
-		self.lambdaClass = 1.0
-
 		self.mseLoss = nn.MSELoss(reduction="sum")
 		self.bceLoss = nn.BCEWithLogitsLoss(reduction="sum")
 
@@ -118,27 +111,8 @@ class YoloLoss(nn.Module):
 		batchSize = output.size(0)
 		strideWidth = self.imageSize[0]/self.mapSize[0]
 		strideHeight = self.imageSize[1]/self.mapSize[1]
-		# output = output.view(batchSize, self.numAnchors, self.mapSize[0], self.mapSize[1], self.bboxAttributes)
-
-		# x = output[..., 0]
-		# y = output[..., 1]
-		# width = output[..., 2]
-		# height = output[..., 3]
-		# conf = output[..., 4]
-		# classPred = output[..., 5:]
-
-		# targetX = torch.zeros(output[..., 0].shape, device=device)
-		# targetY = torch.zeros(targetX.shape, device=device)
-		# targetWidth = torch.zeros(targetX.shape, device=device)
-		# targetHeight = torch.zeros(targetX.shape, device=device)
-		# targetConf = torch.zeros(targetX.shape, device=device)
-		# targetClassPred  = torch.zeros(output[..., 5:].shape, device=device)
   
 		output = output.view(batchSize, self.numAnchors, self.bboxAttributes, self.mapSize[0], self.mapSize[1]).permute(0, 1, 3, 4, 2).contiguous()
-
-		bboxTarget = torch.zeros(output[...,:4].shape, device=device, requires_grad=False)
-		objectClassTarget = torch.zeros(output[...,4:].shape, device=device, requires_grad=False)
-
 		boxLoss, objLoss, clsLoss = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
 
 		# print(output.shape)
@@ -191,33 +165,17 @@ class YoloLoss(nn.Module):
 				for xCoord in range(output.shape[2]):
 					for yCoord in range(output.shape[3]):
 						if exactMatches[index,anchor,xCoord,yCoord] == 1:
-							# exact match 
+							# exact match, add to box and classification loss
 							targetMatched = imageTargets[int(mask[index,anchor,xCoord,yCoord])]
-							bboxTarget[index,anchor,xCoord,yCoord] = targetMatched[:4]
 							boxLoss += self.mseLoss(output[index,anchor,xCoord,yCoord,:4], targetMatched[:4])
 							clsLoss += self.bceLoss(output[index,anchor,xCoord,yCoord,5:], targetMatched[4:])
+
 						box = output[index,anchor,xCoord,yCoord,:4]
 						bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
 						bestFitTarget = bboxIOUs.index(max(bboxIOUs))
-
-						# Not assigned to GT, ignore prediction
-						# conf = output[index,anchor,xCoord,yCoord,4]
-
-						if bboxIOUs[bestFitTarget] > 0.5:
-							# doesn't overlap with GT box, don't ignore objectness
-							# output[index,anchor,xCoord,yCoord,4] = 1.0-bboxIOUs[bestFitTarget]
+						if bboxIOUs[bestFitTarget] < 0.5:
+							# overlaps with GT box, ignore objectness
 							objLoss += 1.0-bboxIOUs[bestFitTarget]
-			
-		# bboxPred = output[...,:4]
-		# confClassPred = output[...,4:]
-		# bboxLoss = self.mseLoss(bboxPred, bboxTarget)
-		# confLoss = self.bceLoss(confClassPred, objectClassTarget)
-
-		# loss = bboxLoss + confLoss
-
-		# boxLoss = self.mseLoss(output[...,:4], bboxTarget[...,:])
-		# objLoss = self.bceLoss(output[...,4], objectClassTarget[...,0])
-		# clsLoss = self.bceLoss(output[...,5:], objectClassTarget[...,1:])
 
 		boxLoss *= 0.05
 		clsLoss *= 0.5
