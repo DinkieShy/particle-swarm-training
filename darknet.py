@@ -38,15 +38,15 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	anchors = [(anchor[0]/strideW, anchor[1]/strideH) for anchor in anchors]
 
 	# Apply sigmoid to centreX, centreY and objectness score
-	prediction[:,:,0] = torch.sigmoid(prediction[:,:,0])
-	prediction[:,:,1] = torch.sigmoid(prediction[:,:,1])
-	prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
+	prediction[:,:,0] = prediction[:,:,0].sigmoid()
+	prediction[:,:,1] = prediction[:,:,1].sigmoid()
+	# prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
 
 	a, b = np.meshgrid(np.arange(gridSize[0]), np.arange(gridSize[1])) # Makes a list of coordinate matricies
 
 	# Tensor.view shares data with underlying tensor, in this case it applies the prediction to the grid we just defined
-	xOffset = torch.as_tensor(a, dtype=torch.float32, device=device).view(-1, 1)
-	yOffset = torch.as_tensor(b, dtype=torch.float32, device=device).view(-1, 1)
+	xOffset = torch.as_tensor(a, device=device).view(-1, 1)
+	yOffset = torch.as_tensor(b, device=device).view(-1, 1)
 
 	xyOffset = torch.cat((xOffset, yOffset), 1).repeat(1, numAnchors).view(-1,2).unsqueeze(0)
 
@@ -57,7 +57,7 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	anchors = anchors.repeat(gridSize[0]*gridSize[1], 1).unsqueeze(0)
 	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
 
-	prediction[:,:,5:5 + numClasses] = torch.sigmoid(prediction[:,:,5:5 + numClasses])
+	# prediction[:,:,5:5 + numClasses] = torch.sigmoid(prediction[:,:,5:5 + numClasses])
 
 	# resize to image 
 	prediction[:,:,0] *= strideW
@@ -86,7 +86,7 @@ class YoloLoss(nn.Module):
 		self.lambdaClass = 1.0
 
 		self.mseLoss = nn.MSELoss(reduction="sum")
-		self.bceLoss = nn.BCELoss(reduction="sum")
+		self.bceLoss = nn.BCEWithLogitsLoss(reduction="sum")
 
 	def forward(self, output, targets):
 		"""
@@ -133,9 +133,13 @@ class YoloLoss(nn.Module):
 		# targetHeight = torch.zeros(targetX.shape, device=device)
 		# targetConf = torch.zeros(targetX.shape, device=device)
 		# targetClassPred  = torch.zeros(output[..., 5:].shape, device=device)
+  
+		output = output.view(batchSize, self.numAnchors, self.bboxAttributes, self.mapSize[0], self.mapSize[1]).permute(0, 1, 3, 4, 2).contiguous()
 
 		bboxTarget = torch.zeros(output[...,:4].shape, device=device, requires_grad=False)
 		objectClassTarget = torch.zeros(output[...,4:].shape, device=device, requires_grad=False)
+
+		boxLoss, objLoss, clsLoss = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
 
 		# print(output.shape)
 		# Output shape is [batchSize, number of anchors, feature map width, feature map height, 5 + numClasses]
@@ -160,7 +164,7 @@ class YoloLoss(nn.Module):
 			imageTargets = torch.cat((imageTargetBoxes, imageTargetClasses), dim=1)
 			# ^ creates tensor of [[xCenter, yCenter, width, height, classBool, classBool, ... , classBool]]
 
-			mask = torch.zeros(output.shape[:2], device=device, requires_grad=False)
+			mask = torch.zeros(output.shape[:4], device=device, requires_grad=False)
 			# >0 : pixel overlaps GT box with stored index
 			# -1 : pixel does not correspond to a GT box
 			exactMatches = torch.zeros(mask.shape, device=device, requires_grad=False)
@@ -177,32 +181,32 @@ class YoloLoss(nn.Module):
 
 				targetCenter = [int((imageTargets[i][2]-imageTargets[i][0])/strideWidth), int((imageTargets[i][3]-imageTargets[i][1])/strideHeight)]
 
-				mask[index,bestMatch*targetCenter[0]+targetCenter[1]] = i
-				exactMatches[index, bestMatch*targetCenter[0]+targetCenter[1]] = 1
+				mask[index,bestMatch,targetCenter[0],targetCenter[1]] = i
+				exactMatches[index,bestMatch,targetCenter[0],targetCenter[1]] = 1
 				# mask[index, anchor, xCenter, yCenter] = 1 if *that* pixel corresponds to a gt box
 				# Only this pixel incurs x/y/class loss
 				# For other pixels, no loss incurred if 0.5 IoU with a gt box, else only objectness loss
 
-			for i in range(output.shape[1]):
-				if exactMatches[index,i] == 1:
-					# exact match 
-					targetMatched = imageTargets[int(mask[index,i])]
-					bboxTarget[index,i,2] = targetMatched[2]
-					bboxTarget[index,i,3] = targetMatched[3]
-					objectClassTarget[index,i,0] = 1
-					objectClassTarget[index,i,1:] = targetMatched[5:]
-				else:
-					box = output[index,i,:4]
-					bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
-					bestFitTarget = bboxIOUs.index(max(bboxIOUs))
+			for anchor in range(output.shape[1]):
+				for xCoord in range(output.shape[2]):
+					for yCoord in range(output.shape[3]):
+						if exactMatches[index,anchor,xCoord,yCoord] == 1:
+							# exact match 
+							targetMatched = imageTargets[int(mask[index,anchor,xCoord,yCoord])]
+							bboxTarget[index,anchor,xCoord,yCoord] = targetMatched[:4]
+							boxLoss += self.mseLoss(output[index,anchor,xCoord,yCoord,:4], targetMatched[:4])
+							clsLoss += self.bceLoss(output[index,anchor,xCoord,yCoord,5:], targetMatched[4:])
+						box = output[index,anchor,xCoord,yCoord,:4]
+						bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
+						bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 
-					# Not assigned to GT, ignore prediction
-					conf = output[index,i,4]
-					output[index,i] *= 0
+						# Not assigned to GT, ignore prediction
+						# conf = output[index,anchor,xCoord,yCoord,4]
 
-					if bboxIOUs[bestFitTarget] < 0.5:
-						# doesn't overlap with GT box, don't ignore objectness
-						output[index,i,4] = conf
+						if bboxIOUs[bestFitTarget] > 0.5:
+							# doesn't overlap with GT box, don't ignore objectness
+							# output[index,anchor,xCoord,yCoord,4] = 1.0-bboxIOUs[bestFitTarget]
+							objLoss += 1.0-bboxIOUs[bestFitTarget]
 			
 		# bboxPred = output[...,:4]
 		# confClassPred = output[...,4:]
@@ -210,16 +214,16 @@ class YoloLoss(nn.Module):
 		# confLoss = self.bceLoss(confClassPred, objectClassTarget)
 
 		# loss = bboxLoss + confLoss
-  
-		xLoss = self.mseLoss(output[...,0], bboxTarget[...,0])
-		yLoss = self.mseLoss(output[...,1], bboxTarget[...,1])
-		widthLoss = self.mseLoss(output[...,2], bboxTarget[...,2])
-		heightLoss = self.mseLoss(output[...,3], bboxTarget[...,3])
-		objConfLoss = self.bceLoss(output[...,4], objectClassTarget[...,0])
-		classLoss = self.bceLoss(output[...,5:], objectClassTarget[...,1:])
 
-		totalLoss = (xLoss + yLoss)*self.lambaXY + (widthLoss + heightLoss)*self.lambdaWH + objConfLoss*self.lambdaConf + classLoss*self.lambdaClass
-		return totalLoss, xLoss, yLoss, widthLoss, heightLoss, objConfLoss, classLoss
+		# boxLoss = self.mseLoss(output[...,:4], bboxTarget[...,:])
+		# objLoss = self.bceLoss(output[...,4], objectClassTarget[...,0])
+		# clsLoss = self.bceLoss(output[...,5:], objectClassTarget[...,1:])
+
+		boxLoss *= 0.05
+		clsLoss *= 0.5
+
+		totalLoss = boxLoss + objLoss + clsLoss
+		return totalLoss, boxLoss, objLoss, clsLoss
 
 def filterUnique(tensor):
 	npTensor = tensor.cpu().numpy()
@@ -291,22 +295,26 @@ class Darknet(nn.Module):
 				inputDim = (int(self.net_info["width"]), int(self.net_info["height"]))
 				numClasses = int(self.net_info["numClasses"])
 				mapSize = x.shape
+				x = predictTransform(x, inputDim, anchors, numClasses, CUDA)
 
-				x = predictTransform(x, inputDim, anchors, numClasses, CUDA) 
+				if not self.training:
+					if not write:
+						write = True
+						self.detections = x
+					else:
+						self.detections = torch.cat((self.detections, x), 1)
 
-				if self.training:
+				else:
 					if mapSize[2] not in self.lossFuncs.keys():
 						self.lossFuncs[mapSize[2]] = YoloLoss(anchors, numClasses, (mapSize[2], mapSize[3]), (self.net_info["width"], self.net_info["height"]))
 
-				if not write:
-					self.detections = x
-					write = True
-					if self.training:
+					if not write:
+						write = True
+						self.detections = x
 						loss = self.lossFuncs[mapSize[2]](x, target)
 						self.losses.append(loss)
-				else:
-					self.detections = torch.cat((self.detections, x), 1)
-					if self.training:
+					else:
+						self.detections = torch.cat((self.detections, x), 1)
 						newLoss = self.lossFuncs[mapSize[2]](x, target)
 						self.losses.append(newLoss)
 

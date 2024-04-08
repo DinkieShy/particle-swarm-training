@@ -133,7 +133,7 @@ def transform(image, targets):
     image = F.normalize(transforms.ToTensor()(image))
     return image, targets
 
-trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
 train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
 valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
