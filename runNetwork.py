@@ -130,9 +130,10 @@ if use_cuda:
 
 
 def transform(image, targets):
-    image = F.normalize(transforms.ToTensor()(image))
+    print(image.size)
     if image.size != (800, 1216):
         image, targets["boxes"] = customTransforms.resize(image, targets["boxes"], (800,1216))
+    image = F.normalize(transforms.ToTensor()(image))
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
