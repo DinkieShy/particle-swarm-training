@@ -111,6 +111,7 @@ class YoloLoss(nn.Module):
 		batchSize = output.size(0)
 		strideWidth = self.imageSize[0]/self.mapSize[0]
 		strideHeight = self.imageSize[1]/self.mapSize[1]
+		iouAvgCount = 0
   
 		output = output.view(batchSize, self.numAnchors, self.bboxAttributes, self.mapSize[0], self.mapSize[1]).permute(0, 1, 3, 4, 2).contiguous()
 		boxLoss, objLoss, clsLoss = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
@@ -176,9 +177,11 @@ class YoloLoss(nn.Module):
 						if bboxIOUs[bestFitTarget] < 0.5:
 							# overlaps with GT box, ignore objectness
 							objLoss += 1.0-bboxIOUs[bestFitTarget]
+							iouAvgCount += 1
 
-		boxLoss *= 0.05
 		clsLoss *= 0.5
+		objLoss /= iouAvgCount # get mean of iou loss
+		objLoss *= 0.05
 
 		totalLoss = boxLoss + objLoss + clsLoss
 		return totalLoss, boxLoss, objLoss, clsLoss
