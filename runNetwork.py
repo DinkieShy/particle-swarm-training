@@ -130,7 +130,6 @@ if use_cuda:
 
 
 def transform(image, targets):
-    print(image.size)
     if image.size != (800, 1216):
         image, targets["boxes"] = customTransforms.resize(image, targets["boxes"], (800,1216))
     image = F.normalize(transforms.ToTensor()(image))
