@@ -204,14 +204,22 @@ class YoloLoss(nn.Module):
 						# doesn't overlap with GT box, don't ignore objectness
 						output[index,i,4] = conf
 			
-		bboxPred = output[...,:4]
-		confClassPred = output[...,4:]
-		bboxLoss = self.mseLoss(bboxPred, bboxTarget)
-		confLoss = self.bceLoss(confClassPred, objectClassTarget)
+		# bboxPred = output[...,:4]
+		# confClassPred = output[...,4:]
+		# bboxLoss = self.mseLoss(bboxPred, bboxTarget)
+		# confLoss = self.bceLoss(confClassPred, objectClassTarget)
 
-		loss = bboxLoss + confLoss
+		# loss = bboxLoss + confLoss
+  
+		xLoss = self.mseLoss(output[...,0], bboxTarget[...,0])
+		yLoss = self.mseLoss(output[...,1], bboxTarget[...,1])
+		widthLoss = self.mseLoss(output[...,2], bboxTarget[...,2])
+		heightLoss = self.mseLoss(output[...,3], bboxTarget[...,3])
+		objConfLoss = self.bceLoss(output[...,4], objectClassTarget[...,0])
+		classLoss = self.bceLoss(output[...,5:], objectClassTarget[...,1:])
 
-		return loss
+		totalLoss = (xLoss + yLoss)*self.lambaXY + (widthLoss + heightLoss)*self.lambdaWH + objConfLoss*self.lambdaConf + classLoss*self.lambdaClass
+		return totalLoss, xLoss, yLoss, widthLoss, heightLoss, objConfLoss, classLoss
 
 def filterUnique(tensor):
 	npTensor = tensor.cpu().numpy()

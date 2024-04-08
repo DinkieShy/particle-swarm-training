@@ -56,7 +56,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
             modelStart = time.time()
             output, losses = model(data, targets, CUDA=torch.cuda.is_available())
             modelTime = time.time() - modelStart
-            loss = sum(losses)
+            loss = sum(losses[0])
+            # print(loss)
 
         else:
             output = model(data)
@@ -94,7 +95,7 @@ parser.add_argument('--batch-size', type=int, default=1, metavar='N',
 parser.add_argument('--epochs', type=int, default=15, metavar='N',
                     help='number of epochs to train (default: 14)')
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
-                    help='learning rate (default: 1.0)')
+                    help='learning rate (default: 0.001)')
 parser.add_argument('--lr2', type=float, default=0.0001, metavar='LR2',
                     help="second learning rate to use")
 parser.add_argument('--lr-drop', type=int, default=10, metavar="LRD",
