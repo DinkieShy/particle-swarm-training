@@ -175,8 +175,8 @@ class YoloLoss(nn.Module):
 						bboxIOUs = [bboxIOU(convertBbox(box), targetBox, corners=True) for targetBox in targets[index]["boxes"]]
 						bestFitTarget = bboxIOUs.index(max(bboxIOUs))
 						if bboxIOUs[bestFitTarget] < 0.5:
-							# overlaps with GT box, ignore objectness
-							objLoss += 1.0-bboxIOUs[bestFitTarget]
+							# doesn't overlap with GT box, don't ignore objectness
+							objLoss += self.bceLoss(output[index,anchor,xCoord,yCoord,4], torch.tensor(1.0, device=device, dtype=output.dtype))
 							iouAvgCount += 1
 
 		clsLoss *= 0.5
