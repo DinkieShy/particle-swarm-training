@@ -114,11 +114,11 @@ def createModuleList(blocks):
 			anchors = [anchors[i] for i in masks]
 
 			detection = YoloDetection(anchors)
-			strideW = int(netInfo["width"]) // prevChannels
-			strideH = int(netInfo["height"]) // prevChannels
-			gridSize = (int(netInfo["width"]) // strideW, int(netInfo["height"]) // strideH)
-			activation = nn.AdaptiveAvgPool2d(gridSize)
-			newModule.add_module(f"adaptive_avg_pool_{index}", activation)
+			# strideW = int(netInfo["width"]) // prevChannels
+			# strideH = int(netInfo["height"]) // prevChannels
+			# gridSize = (int(netInfo["width"]) // strideW, int(netInfo["height"]) // strideH)
+			# activation = nn.AdaptiveAvgPool2d(gridSize)
+			# newModule.add_module(f"adaptive_avg_pool_{index}", activation)
 			newModule.add_module(f"detection_{index}", detection)
 
 		moduleList.append(newModule)

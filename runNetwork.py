@@ -52,10 +52,12 @@ def train(args, model, device, train_loader, optimizer, epoch):
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
         optimizer.zero_grad(set_to_none=True)
         if args.network == "darknet":
+            from darknet import computeLoss
             model.losses = []
             # modelStart = time.time()
-            output, losses = model(data, targets, CUDA=torch.cuda.is_available())
+            output = model(data, targets, CUDA=torch.cuda.is_available())
             # modelTime = time.time() - modelStart
+            losses = computeLoss(output, targets, model)
             loss = sum(losses[0])
             # print(loss)
 
