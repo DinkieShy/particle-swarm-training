@@ -67,26 +67,6 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	return prediction
 
-# class YoloLoss(nn.Module):
-# 	def __init__(self, anchors, numClasses, mapSize, imageSize):
-# 		super(YoloLoss, self).__init__()
-# 		self.anchors = anchors
-# 		self.anchorAreas = [a[0] * a[1] for a in self.anchors]
-# 		self.numAnchors = len(anchors)
-# 		self.numClasses = numClasses
-# 		self.bboxAttributes = 5 + numClasses
-# 		self.mapSize = mapSize
-# 		self.imageSize = (int(imageSize[0]), int(imageSize[1]))
-
-# 		self.mseLoss = nn.MSELoss(reduction="sum")
-# 		self.bceLoss = nn.BCEWithLogitsLoss(reduction="sum")
-
-# 	def forward(self, output, targets):
-# 		if output.get_device() == -1:
-# 			device = "cpu"
-# 		else:
-# 			device = "cuda"		
-
 def computeLoss(outputs, targets, model):
 	# output is in the format [yolo  layer][batchSize, anchor, x, y, objectness, class logits...]
 	device = outputs[0].device
@@ -108,21 +88,27 @@ def computeLoss(outputs, targets, model):
 			objTarget = torch.zeros_like(outputs[yoloLayer][...,0], device=device)
 
 			for target in range(numTargets):
-				xCoord = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1)
-				yCoord = min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
+				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
 				anchor = int(anchors[yoloLayer][batch,target])
 
-				boxPrediction = torch.zeros(4, device=device)
-				boxPrediction[0] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,0]) + xCoord
-				boxPrediction[1] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,1]) + yCoord
-				boxPrediction[2] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,2])*targetAnchors[target][0]
-				boxPrediction[3] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,3])*targetAnchors[target][1]
+				for xCoord in range(outputs[yoloLayer].shape[2]):
+					for yCoord in range(outputs[yoloLayer].shape[3]):
+						boxPrediction = torch.zeros(4, device=device)
+						boxPrediction[0] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,0]) + xCoord
+						boxPrediction[1] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,1]) + yCoord
+						boxPrediction[2] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,2])*targetAnchors[target][0]
+						boxPrediction[3] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,3])*targetAnchors[target][1]
 
-				iou = bboxIOU(boxPrediction, bboxTarget[yoloLayer][batch,target], widthHeight=True)
-				objTarget[batch,anchor,xCoord,yCoord] = iou
-				bboxLoss += 1.0 - iou
-				bboxLossAvgCount += 1
-				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,xCoord,yCoord,5:], clsTarget[yoloLayer][batch,target])
+						iou = bboxIOU(boxPrediction, bboxTarget[yoloLayer][batch,target], widthHeight=True)
+						if xCoord == targetX and yCoord == targetY:
+							objTarget[batch,anchor,xCoord,yCoord] = iou
+							clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,xCoord,yCoord,5:], clsTarget[yoloLayer][batch,target])
+							bboxLoss += 1.0 - iou
+							bboxLossAvgCount += 1
+						elif iou < 0.5:
+							bboxLoss += 1.0 - iou
+							bboxLossAvgCount += 1
+
 			objLoss += objLossFunc(outputs[yoloLayer][...,4], objTarget)
 
 	bboxLoss /= bboxLossAvgCount
