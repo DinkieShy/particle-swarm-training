@@ -67,6 +67,24 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	return prediction
 
+def computeIOUs(output, targetBox, anchor):
+	device = output.device
+	desiredShape = list(output.shape)
+	desiredShape[-1] = 8
+	boxPredictions = torch.zeros(desiredShape, device=device)
+	boxPredictions[...,:2] = torch.sigmoid(output[...,:2]) + targetBox[:2]
+	boxPredictions[...,2:4] = (torch.exp(output[...,2:4]) * anchor)/2
+	boxPredictions[...,4:6] = boxPredictions[...,0:2] - boxPredictions[...,2:4]
+	boxPredictions[...,6:8] = boxPredictions[...,0:2] + boxPredictions[...,2:4]
+	desiredShape[-1] = 2
+	intersects = torch.zeros(desiredShape, device=device)
+	intersects[...,0] = torch.maximum(boxPredictions[...,6], targetBox[2]) - torch.minimum(boxPredictions[...,4], targetBox[0])
+	intersects[...,1] = torch.maximum(boxPredictions[...,7], targetBox[3]) - torch.minimum(boxPredictions[...,5], targetBox[1])
+	intersects = torch.prod(intersects, dim=-1)
+	ious = intersects / ((torch.prod(boxPredictions[...,6:8], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
+
+	return ious
+
 def computeLoss(outputs, targets, model):
 	# output is in the format [yolo  layer][batchSize, anchor, x, y, objectness, class logits...]
 	device = outputs[0].device
@@ -78,45 +96,39 @@ def computeLoss(outputs, targets, model):
 	objLossFunc = nn.BCEWithLogitsLoss()
 
 	for yoloLayer in range(len(outputs)):
-		for batch in range(clsTarget[yoloLayer].shape[0]):
-			numTargets = clsTarget[yoloLayer].shape[1]
+		for batch in range(len(clsTarget[yoloLayer])):
+			numTargets = clsTarget[yoloLayer][batch].shape[0]
 			gridTargets = []
-			targetAnchors = [model.anchorGroups[yoloLayer][int(anchors[yoloLayer][batch, i])] for i in range(numTargets)]
+			# targetAnchors = [model.anchorGroups[yoloLayer][int(anchors[yoloLayer][batch][i])] for i in range(numTargets)]
 			for i in range(numTargets):
-				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch,i,:2]])
+				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch][i,:2]])
 			# print(gridTargets) # <- Base cls and box loss on these indicies
-			objTarget = torch.zeros_like(outputs[yoloLayer][...,0], device=device)
+			objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device)
+			mask = torch.ones_like(outputs[yoloLayer][...,4], device=device)
 
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
-				anchor = int(anchors[yoloLayer][batch,target])
+				anchor = int(anchors[yoloLayer][batch][target])
 
-				for xCoord in range(outputs[yoloLayer].shape[2]):
-					for yCoord in range(outputs[yoloLayer].shape[3]):
-						boxPrediction = torch.zeros(4, device=device)
-						boxPrediction[0] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,0]) + xCoord
-						boxPrediction[1] = torch.sigmoid(outputs[yoloLayer][batch,anchor,xCoord,yCoord,1]) + yCoord
-						boxPrediction[2] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,2])*targetAnchors[target][0]
-						boxPrediction[3] = torch.exp(outputs[yoloLayer][batch,anchor,xCoord,yCoord,3])*targetAnchors[target][1]
+				ious = computeIOUs(outputs[yoloLayer], bboxTarget[yoloLayer][batch][target], anchor)
+				mask[ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
-						iou = bboxIOU(boxPrediction, bboxTarget[yoloLayer][batch,target], widthHeight=True)
-						if xCoord == targetX and yCoord == targetY:
-							objTarget[batch,anchor,xCoord,yCoord] = iou
-							clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,xCoord,yCoord,5:], clsTarget[yoloLayer][batch,target])
-							bboxLoss += 1.0 - iou
-							bboxLossAvgCount += 1
-						elif iou < 0.5:
-							bboxLoss += 1.0 - iou
-							bboxLossAvgCount += 1
+				objTarget[batch,anchor,targetX,targetY] = 1
+				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
+				bboxLoss += 1.0 - ious[batch,anchor,targetX,targetY]
+				bboxLossAvgCount += 1
+			for target in range(numTargets):
+				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
+				anchor = int(anchors[yoloLayer][batch][target])
+				mask[batch,anchor,targetX,targetY] = 1 # Need to incur loss for target cell regardless of IoU
 
-			objLoss += objLossFunc(outputs[yoloLayer][...,4], objTarget)
+			objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
 	bboxLoss *= 0.05
 	clsLoss *= 0.5
 
 	loss = bboxLoss + clsLoss + objLoss
-	print(loss.item())
 
 	return loss, (bboxLoss, clsLoss, objLoss)
 
@@ -146,10 +158,9 @@ def buildTargets(outputs, targets, model, device="cpu"):
 
 	yoloLayers = [i for i in range(len(model.moduleList)) if model.blocks[i]["type"] == "yolo"]
 	for i, layer in enumerate(yoloLayers):
-		clsTarget.append(torch.zeros(1, device=device))
-		bboxTarget.append(torch.zeros(1, device=device))
-		targetAnchors.append(torch.zeros(1, device=device))
-		write = False
+		clsTarget.append([])
+		bboxTarget.append([])
+		targetAnchors.append([])
 		for batch in range(batchSize):
 			numTargets = len(targetTensors[batch])
 			targets = targetTensors[batch]
@@ -166,7 +177,7 @@ def buildTargets(outputs, targets, model, device="cpu"):
 			targets[...,1] /= stride[1]
 			targets[...,3] /= stride[1]
 
-			anchors = torch.Tensor([[anchor[0]/stride[0], anchor[1]/stride[1]] for anchor in model.moduleList[layer][0].anchors])
+			anchors = torch.tensor([[anchor[0]/stride[0], anchor[1]/stride[1]] for anchor in model.moduleList[layer][0].anchors], device=device)
 			numAnchors = len(anchors)
 			# Need to find best matching anchor, but can't use IoU because the anchors get scaled; check ratio of heights/widths instead
 			ratios = targets[...,2:3] / anchors[:,None]
@@ -188,15 +199,9 @@ def buildTargets(outputs, targets, model, device="cpu"):
 				clsLogits[ii, int(targets[bestMatches][ii, 4])] = 1
 				targetAnchorsTensor[ii] = targets[bestMatches][ii, 5]
 
-			if not write:
-				clsTarget[-1] = clsLogits.unsqueeze(0)
-				bboxTarget[-1] = targets[bestMatches][...,:4].unsqueeze(0)
-				targetAnchors[-1] = targetAnchorsTensor.unsqueeze(0)
-				write = True
-			else:
-				clsTarget[-1] = torch.cat((clsTarget[-1], clsLogits.unsqueeze(0)))
-				bboxTarget[-1] = torch.cat((bboxTarget[-1], targets[bestMatches][...,:4].unsqueeze(0)))
-				targetAnchors[-1] = torch.cat((targetAnchors[-1], targetAnchorsTensor.unsqueeze(0)))
+			clsTarget[-1].append(clsLogits)
+			bboxTarget[-1].append(targets[bestMatches][...,:4])
+			targetAnchors[-1].append(targetAnchorsTensor)
 
 	return clsTarget, bboxTarget, targetAnchors
 
