@@ -3,6 +3,7 @@ import subprocess
 from multiprocessing import Pool, TimeoutError, Process
 from sys import float_info
 from json import dumps
+from math import isfinite
 import argparse
 
 # Install: pip install numpy torch torchvision
@@ -124,7 +125,7 @@ def runParticle(args, progBar = None):
     particle = args[1]
     # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5", "--batch-size", "1"]
+    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5", "--batch-size", "4"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
@@ -140,7 +141,7 @@ def runParticle(args, progBar = None):
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
     print(result)
-    if result == float("NaN"):
+    if not isfinite(result):
         print("Particle was NaN")
         particle.setRandomPosition(particle.positions[0])
     else:
