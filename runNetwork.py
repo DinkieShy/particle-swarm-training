@@ -167,7 +167,7 @@ f.close()
 for epoch in range(1, args.epochs+1):
     loss = train(args, model, device, train_loader, optimizer, epoch)
     if not isfinite(loss):
-        print("NaN")
+        break
     # Log training loss to file (only use for testing; will break main.py)
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:

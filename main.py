@@ -86,6 +86,8 @@ class Particle():
                 self.position[dim] = round(self.position[dim])
 
     def update(self, result):
+        if result == float("NaN"):
+            result = 1000
         newPosition = {}
         for dim in self.position:
             if dim in self.dimensionsBeingChanged:
