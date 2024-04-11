@@ -58,7 +58,9 @@ class Particle():
             self.results.append(result)
 
         self.dimensionsBeingChanged = dimensionsToChange
-
+        self.setRandomPosition(distribution)
+    
+    def setRandomPosition(self, distribution):
         for dim in self.dimensions:
             if dim in self.dimensionsBeingChanged or distribution == None:
                 if isinstance(self.dimensions[dim][0], (int)):
@@ -86,8 +88,6 @@ class Particle():
                 self.position[dim] = round(self.position[dim])
 
     def update(self, result):
-        if result == float("NaN"):
-            result = 1000
         newPosition = {}
         for dim in self.position:
             if dim in self.dimensionsBeingChanged:
@@ -139,7 +139,11 @@ def runParticle(args, progBar = None):
         progBar.update()
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
-    particle.update(result) # Calls the particle with it's result to update
+    if result == float("NaN"):
+        print("Particle was NaN")
+        particle.setRandomPosition(particle.positions[0])
+    else:
+        particle.update(result) # Calls the particle with it's result to update
     return [result, particle]
 
 def main():
