@@ -140,9 +140,7 @@ def runParticle(args, progBar = None):
         progBar.update()
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
-    print(result)
     if not isfinite(result):
-        print("Particle was NaN")
         particle.setRandomPosition(particle.positions[0])
     else:
         particle.update(result) # Calls the particle with it's result to update
