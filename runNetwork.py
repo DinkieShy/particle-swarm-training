@@ -44,7 +44,9 @@ class Net(nn.Module):
     
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
-    for itr, (dataBatch, targets) in (enumerate(pbar := tqdm(train_loader))):
+    runningloss = 0
+    # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    for dataBatch, targets in train_loader:
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -58,7 +60,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
             # modelTime = time.time() - modelStart
             # backwardStart = time.time()
             loss, _ = computeLoss(output, targets, model)
-            pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
+            if not isfinite(loss.item()):
+                return loss.item()
+            runningloss += loss.item()
+            # pbar.set_postfix({'loss': f"{(runningloss/itr):0.4f}"})
             # loss = sum(losses[0])
             # print(loss)
 
@@ -68,14 +73,14 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         with open("./trainingLog.txt", "a") as f:
             f.write(f"{epoch}: {loss.item()}\n")
-            f.close()    
+            f.close()
 
         loss.backward()
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
         # backwardTime = time.time() - backwardStart
         # print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
-    return loss
+    return runningloss / len(train_loader)
 
 def test(model, test_loader, device):
     model.eval()
@@ -158,17 +163,16 @@ optimizer = optim.SGD(model.parameters(), lr=args.lr)
 f = open("./trainingLog.txt", "w")
 f.close()
 
-for epoch in range(1, 60):
+for epoch in range(1, args.epochs+1):
     loss = train(args, model, device, train_loader, optimizer, epoch)
+    if not isfinite(loss.item()):
+        print("NaN")
     # Log training loss to file (only use for testing; will break main.py)
     if epoch == args.lr_drop:
         for i in optimizer.param_groups:
             i['lr'] = args.lr2
 
-if isfinite(loss.item()):
-    print(loss.item())
-else:
-    print("NaN")
+print(loss.item())
 
 if args.test:
     test(model, test_loader, device)

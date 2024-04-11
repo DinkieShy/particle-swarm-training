@@ -7,56 +7,6 @@ from itertools import chain
 
 from models import parseCfg, createModuleList
 
-def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
-	# This function takes the detection feature map from the last YOLO layer, and creates a tensor of the transformation between it and the predicted bounding box of the object
-
-	if not CUDA:
-		device = "cpu"
-	else:
-		device = "cuda"
-
-	batchSize = prediction.size(0)
-	strideW = inputDim[0] // prediction.size(2)
-	strideH = inputDim[1] // prediction.size(2)
-	gridSize = (inputDim[0] // strideW, inputDim[1] // strideH)
-	bboxAttributes = 5 + numClasses
-	numAnchors = len(anchors)
-
-	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize[0]*gridSize[1])
-	prediction = prediction.transpose(1, 2).contiguous()
-	prediction = prediction.view(batchSize, gridSize[0]*gridSize[1]*numAnchors, bboxAttributes)
-
-	# Anchors are defined in reference to input image size, rescale to fit prediction feature map
-	anchors = [(anchor[0]/strideW, anchor[1]/strideH) for anchor in anchors]
-
-	# Apply sigmoid to centreX, centreY and objectness score
-	prediction[:,:,0] = prediction[:,:,0].sigmoid()
-	prediction[:,:,1] = prediction[:,:,1].sigmoid()
-	# prediction[:,:,4] = torch.sigmoid(prediction[:,:,4])
-
-	a, b = np.meshgrid(np.arange(gridSize[0]), np.arange(gridSize[1])) # Makes a list of coordinate matricies
-
-	# Tensor.view shares data with underlying tensor, in this case it applies the prediction to the grid we just defined
-	xOffset = torch.as_tensor(a, device=device).view(-1, 1)
-	yOffset = torch.as_tensor(b, device=device).view(-1, 1)
-
-	xyOffset = torch.cat((xOffset, yOffset), 1).repeat(1, numAnchors).view(-1,2).unsqueeze(0)
-
-	prediction[:,:,:2] += xyOffset
-
-	anchors = torch.tensor(anchors, dtype=torch.float32, device=device)
-
-	anchors = anchors.repeat(gridSize[0]*gridSize[1], 1).unsqueeze(0)
-	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
-
-	# resize to image 
-	prediction[:,:,0] *= strideW
-	prediction[:,:,2] *= strideW
-	prediction[:,:,1] *= strideH
-	prediction[:,:,3] *= strideH
-
-	return prediction
-
 def computeIOUs(output, targetBox, anchor):
 	device = output.device
 	desiredShape = list(output.shape)
@@ -81,6 +31,7 @@ def computeLoss(outputs, targets, model):
 	clsLoss, bboxLoss, objLoss = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
 	bboxLossAvgCount = 0
 
+	# Convert targets to coord space of YOLO layer
 	clsTarget, bboxTarget, anchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
@@ -91,7 +42,7 @@ def computeLoss(outputs, targets, model):
 			gridTargets = [] # Grid cells which contain the center of a target bbox
 			for i in range(numTargets):
 				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch][i,:2]])
-			objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device)
+			objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 			mask = torch.zeros_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 
 			for target in range(numTargets):
@@ -103,7 +54,7 @@ def computeLoss(outputs, targets, model):
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target], anchor)
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
-				objTarget[batch,anchor,targetX,targetY] = 1
+				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
 				bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
@@ -112,6 +63,8 @@ def computeLoss(outputs, targets, model):
 				anchor = int(anchors[yoloLayer][batch][target])
 				mask[batch,anchor,targetX,targetY] = 1 # Need to incur loss for target cell regardless of IoU
 
+			# mask[batch,anchor,...] is still 0 if anchor was not used to detect a target, no loss is incurred
+			# additionally, mask[batch,anchor,x,y] is 0 if it's prediction overlapped with a GT by IoU 0.5 despite it not being the center
 			objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
@@ -222,7 +175,6 @@ class Darknet(nn.Module):
 		outputs = {} # Store feature maps for route layers later
 		self.yoloOutputs = []
 		self.anchorGroups = []
-		write = False # Flag used to track when to initalise tensor of detection feature maps
 		if CUDA:
 			device = "cuda"
 		else:
@@ -252,8 +204,8 @@ class Darknet(nn.Module):
 					if (not self.iterDone):
 						self.layersToStore.append(index+layers[0])
 						self.layersToStore.append(index+layers[1])
-					# Dear me:	if you're looking at an error where dimensions don't match up,
-					# 			check the input size is divisible by 32
+					# Dear programmer:	if you're looking at an error where dimensions don't match up,
+					# 					check the input size is divisible by 32
 					featureMaps = (outputs[index + layers[0]], outputs[index + layers[1]])
 					x = torch.cat(featureMaps, 1)
 				if (not self.iterDone) or(self.iterDone and index in self.layersToStore):
@@ -270,8 +222,6 @@ class Darknet(nn.Module):
 					self.layersToStore.append(index+layer)
 
 			elif moduleType == "yolo":
-				# print(x.shape)
-				# x = self.moduleList[index][0](x)
 				imageSize = (int(self.net_info["width"]), int(self.net_info["height"]))
 				anchors = self.moduleList[index][0].anchors
 				self.anchorGroups.append(anchors)
