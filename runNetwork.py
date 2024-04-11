@@ -71,9 +71,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
             output = model(data)
             loss = F.nll_loss(output, targets)    
 
-        with open("./trainingLog.txt", "a") as f:
-            f.write(f"{epoch}: {loss.item()}\n")
-            f.close()
+        if __name__ == "__main__":
+            with open("./trainingLog.txt", "a") as f:
+                f.write(f"{epoch}: {loss.item()}\n")
+                f.close()
 
         loss.backward()
         optimizer.step()
