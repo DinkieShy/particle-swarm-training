@@ -81,7 +81,7 @@ def computeIOUs(output, targetBox, anchor):
 	intersects[...,0] = torch.maximum(boxPredictions[...,6], targetBox[2]) - torch.minimum(boxPredictions[...,4], targetBox[0])
 	intersects[...,1] = torch.maximum(boxPredictions[...,7], targetBox[3]) - torch.minimum(boxPredictions[...,5], targetBox[1])
 	intersects = torch.prod(intersects, dim=-1)
-	ious = intersects / ((torch.prod(boxPredictions[...,6:8], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
+	ious = intersects / ((torch.prod(boxPredictions[...,6:8], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects + torch.finfo(torch.float32).eps)
 
 	return ious
 
