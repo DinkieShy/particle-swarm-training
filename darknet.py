@@ -2,18 +2,12 @@
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
-from sys import float_info
 import numpy as np
-from utils import bboxIOU, convertBbox
 from itertools import chain
 
-from models import parseCfg, createModuleList, YoloDetection
+from models import parseCfg, createModuleList
 
 def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
-	# TODO: Fix inputDim to reflect non-square images (in this function AND in YoloLoss.forward
-
 	# This function takes the detection feature map from the last YOLO layer, and creates a tensor of the transformation between it and the predicted bounding box of the object
 
 	if not CUDA:
@@ -21,7 +15,6 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	else:
 		device = "cuda"
 
-	# print(prediction.shape)
 	batchSize = prediction.size(0)
 	strideW = inputDim[0] // prediction.size(2)
 	strideH = inputDim[1] // prediction.size(2)
@@ -29,7 +22,6 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 	bboxAttributes = 5 + numClasses
 	numAnchors = len(anchors)
 
-	# print(batchSize, bboxAttributes*numAnchors, gridSize[0]*gridSize[1])
 	prediction = prediction.view(batchSize, bboxAttributes*numAnchors, gridSize[0]*gridSize[1])
 	prediction = prediction.transpose(1, 2).contiguous()
 	prediction = prediction.view(batchSize, gridSize[0]*gridSize[1]*numAnchors, bboxAttributes)
@@ -56,8 +48,6 @@ def predictTransform(prediction, inputDim, anchors, numClasses, CUDA=False):
 
 	anchors = anchors.repeat(gridSize[0]*gridSize[1], 1).unsqueeze(0)
 	prediction[:,:,2:4] = torch.exp(prediction[:,:,2:4])*anchors
-
-	# prediction[:,:,5:5 + numClasses] = torch.sigmoid(prediction[:,:,5:5 + numClasses])
 
 	# resize to image 
 	prediction[:,:,0] *= strideW
@@ -98,24 +88,24 @@ def computeLoss(outputs, targets, model):
 	for yoloLayer in range(len(outputs)):
 		for batch in range(len(clsTarget[yoloLayer])):
 			numTargets = clsTarget[yoloLayer][batch].shape[0]
-			gridTargets = []
-			# targetAnchors = [model.anchorGroups[yoloLayer][int(anchors[yoloLayer][batch][i])] for i in range(numTargets)]
+			gridTargets = [] # Grid cells which contain the center of a target bbox
 			for i in range(numTargets):
 				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch][i,:2]])
-			# print(gridTargets) # <- Base cls and box loss on these indicies
 			objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device)
-			mask = torch.ones_like(outputs[yoloLayer][...,4], device=device)
+			mask = torch.zeros_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
-				anchor = int(anchors[yoloLayer][batch][target])
+				# Restrict to valid coords in case target center outside coord space somehow
+				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
+				mask[batch,anchor,...] = 1 # Mask of which cells incur Objectness loss
 
-				ious = computeIOUs(outputs[yoloLayer], bboxTarget[yoloLayer][batch][target], anchor)
-				mask[ious > 0.5] = 0 # Ignore cells with IoU > 0.5
+				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target], anchor)
+				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
 				objTarget[batch,anchor,targetX,targetY] = 1
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += 1.0 - ious[batch,anchor,targetX,targetY]
+				bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
