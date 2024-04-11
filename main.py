@@ -61,7 +61,7 @@ class Particle():
         self.dimensionsBeingChanged = dimensionsToChange
         self.setRandomPosition(distribution)
     
-    def setRandomPosition(self, distribution):
+    def setRandomPosition(self, distribution = None):
         for dim in self.dimensions:
             if dim in self.dimensionsBeingChanged or distribution == None:
                 if isinstance(self.dimensions[dim][0], (int)):
@@ -141,7 +141,7 @@ def runParticle(args, progBar = None):
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
     if not isfinite(result):
-        particle.setRandomPosition(particle.positions[0])
+        particle.setRandomPosition()
     else:
         particle.update(result) # Calls the particle with it's result to update
     return [result, particle]
