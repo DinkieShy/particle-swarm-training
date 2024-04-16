@@ -4,6 +4,7 @@ from multiprocessing import Pool, TimeoutError, Process
 from sys import float_info
 from json import dumps
 from math import isfinite
+from tqdm import tqdm
 import argparse
 
 # Install: pip install numpy torch torchvision
@@ -160,16 +161,16 @@ def main():
     MAX_THREADS = 1
     MAX_ITERATIONS = 15 # This * particles is how many networks get trained
     RUNS_PER_ITERATION = 15 # Reinit particles every _ runs
-    PARTICLES = 3
+    PARTICLES = 20
     SPEED = 0.0001 # initial learning rate of the particles
     MOMENTUM = 0.5 # decay of speed
 
     dimensions = {
         "--lr": (0.0001, 0.001),
         "--lr-drop": (1, 3),
-        "--lr2": (0.00001, 0.0001),
-        "--momentum": (0.75, 0.95),
-        "--decay": (0.00001, 0.0001)
+        "--lr2": (0.00001, 0.0001)
+        # "--momentum": (0.75, 0.95),
+        # "--decay": (0.00001, 0.0001)
     }
 
     favouredPairs = [
@@ -192,13 +193,10 @@ def main():
                 output = np.array([], dtype=np.float32)
                 print(f"Starting run {run}")
                 newParticles = []
-                print(f"Recieved 0/{PARTICLES} outputs", end="r")
-                for out in pool.map(runParticle, zip([args for _ in range(PARTICLES)], swarm.particles)): # Run the particles in parallel
+                for out in pool.map(runParticle, zip([args for _ in range(PARTICLES)], tqdm(swarm.particles))): # Run the particles in parallel
                     # Currently, max concurrent threads is just user defined.
                     # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])
-                    print(f"Recieved {len(output)}/{PARTICLES} outputs", end="r")
-                    # print(f"Output got! {out[0]}")
                     if run != 0:
                         oldParticles.append(out[1])
                     newParticles.append(out[1])
