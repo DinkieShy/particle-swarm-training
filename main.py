@@ -4,7 +4,6 @@ from multiprocessing import Pool, TimeoutError, Process
 from sys import float_info
 from json import dumps
 from math import isfinite
-from tqdm import tqdm
 import argparse
 
 # Install: pip install numpy torch torchvision
@@ -193,7 +192,7 @@ def main():
                 output = np.array([], dtype=np.float32)
                 print(f"Starting run {run}")
                 newParticles = []
-                for out in pool.map(runParticle, zip([args for _ in range(PARTICLES)], tqdm(swarm.particles))): # Run the particles in parallel
+                for out in pool.map(runParticle, zip([args for _ in range(PARTICLES)], swarm.particles)): # Run the particles in parallel
                     # Currently, max concurrent threads is just user defined.
                     # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])
