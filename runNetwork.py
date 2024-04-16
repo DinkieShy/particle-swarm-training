@@ -14,7 +14,7 @@ from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
-from tqdm import tqdm
+# from tqdm import tqdm
 # import time
 
 class Net(nn.Module):
@@ -71,10 +71,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
             output = model(data)
             loss = F.nll_loss(output, targets)    
 
-        if __name__ == "__main__":
-            with open("./trainingLog.txt", "a") as f:
-                f.write(f"{epoch}: {loss.item()}\n")
-                f.close()
+        # if __name__ == "__main__":
+        #     with open("./trainingLog.txt", "a") as f:
+        #         f.write(f"{epoch}: {loss.item()}\n")
+        #         f.close()
 
         loss.backward()
         optimizer.step()

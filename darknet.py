@@ -7,25 +7,29 @@ from itertools import chain
 
 from models import parseCfg, createModuleList
 
-def computeIOUs(output, targetBox, anchor):
+def computeIOUs(output, targetBox):
 	device = output.device
 	desiredShape = list(output.shape)
 	desiredShape[-1] = 8
 	boxPredictions = torch.zeros(desiredShape, device=device)
-	boxPredictions[...,:2] = torch.sigmoid(output[...,:2]) + targetBox[:2]
-	boxPredictions[...,2:4] = (torch.exp(output[...,2:4]) * anchor)/2
-	boxPredictions[...,4:6] = boxPredictions[...,0:2] - boxPredictions[...,2:4]
-	boxPredictions[...,6:8] = boxPredictions[...,0:2] + boxPredictions[...,2:4]
+	boxPredictions[...,:4] = output[...,:4]
+	boxPredictions[...,:2] += torch.floor(targetBox[:2])
+	boxPredictions[...,4:6] = output[...,0:2] - output[...,2:4]/2
+	boxPredictions[...,6:8] = output[...,0:2] + output[...,2:4]/2
+	targetBoxCorners = torch.zeros_like(targetBox)
+	targetBoxCorners[:2] = targetBox[2:] - targetBox[:2]/2
+	targetBoxCorners[2:] = targetBox[2:] + targetBox[:2]/2
 	desiredShape[-1] = 2
 	intersects = torch.zeros(desiredShape, device=device)
-	intersects[...,0] = torch.maximum(boxPredictions[...,6], targetBox[2]) - torch.minimum(boxPredictions[...,4], targetBox[0])
-	intersects[...,1] = torch.maximum(boxPredictions[...,7], targetBox[3]) - torch.minimum(boxPredictions[...,5], targetBox[1])
+	intersects[...,0] = torch.minimum(boxPredictions[...,6], targetBoxCorners[2])-torch.maximum(boxPredictions[...,4],targetBoxCorners[0])
+	intersects[...,1] = torch.minimum(boxPredictions[...,7], targetBoxCorners[3])-torch.maximum(boxPredictions[...,5],targetBoxCorners[1])
 	intersects = torch.prod(intersects, dim=-1)
-	ious = intersects / ((torch.prod(boxPredictions[...,6:8], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects + torch.finfo(torch.float32).eps)
+	ious = intersects / ((torch.prod(boxPredictions[...,2:4], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
 
 	return ious
 
 def computeLoss(outputs, targets, model):
+	torch.autograd.set_detect_anomaly(True)
 	# output is in the format [yolo  layer][batchSize, anchor, x, y, objectness, class logits...]
 	device = outputs[0].device
 	clsLoss, bboxLoss, objLoss = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
@@ -38,26 +42,36 @@ def computeLoss(outputs, targets, model):
 	bboxLossFunc = nn.MSELoss()
 
 	for yoloLayer in range(len(outputs)):
+		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
+		for anchor in range(len(model.anchorGroups[yoloLayer])):
+			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*torch.tensor(model.anchorGroups[yoloLayer][anchor])
+		mask = torch.zeros_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
+		objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 		for batch in range(len(clsTarget[yoloLayer])):
 			numTargets = clsTarget[yoloLayer][batch].shape[0]
 			gridTargets = [] # Grid cells which contain the center of a target bbox
 			for i in range(numTargets):
 				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch][i,:2]])
-			objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
-			mask = torch.zeros_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
+
+			for target in range(numTargets):
+				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
+				mask[batch,anchor,...] = 1 # Mask of which cells incur Objectness loss
 
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
 				# Restrict to valid coords in case target center outside coord space somehow
 				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
-				mask[batch,anchor,...] = 1 # Mask of which cells incur Objectness loss
 
-				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target], anchor)
+				# outputs[yoloLayer][batch,anchor,...,0:2] = torch.sigmoid(outputs[yoloLayer][batch,anchor,...,0:2]) # transform detections
+				# boxPredictions = outputs[yoloLayer][batch,anchor,...,:4]
+				# boxPredictions[...,2:4] *= outputs[yoloLayer][batch,anchor,...,2:4]*model.anchorGroups[anchors[yoloLayer][batch][target]]
+
+				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(torch.sigmoid(outputs[yoloLayer][batch,anchor,targetX, targetY,:4]), bboxTarget[yoloLayer][batch][target])
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0])))
 				# bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
@@ -67,13 +81,14 @@ def computeLoss(outputs, targets, model):
 
 			# mask[batch,anchor,...] is still 0 if anchor was not used to detect a target, no loss is incurred
 			# additionally, mask[batch,anchor,x,y] is 0 if it's prediction overlapped with a GT by IoU 0.5 despite it not being the center
-			objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
+		objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
-	# bboxLoss *= 0.05
-	# clsLoss *= 0.5
+	bboxLoss *= 0.05
+	clsLoss *= 0.5
 
 	loss = bboxLoss + clsLoss + objLoss
+	print(loss.item())
 
 	return loss, (bboxLoss, clsLoss, objLoss)
 
