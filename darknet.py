@@ -35,6 +35,7 @@ def computeLoss(outputs, targets, model):
 	clsTarget, bboxTarget, anchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
+	bboxLossFunc = nn.MSELoss()
 
 	for yoloLayer in range(len(outputs)):
 		for batch in range(len(clsTarget[yoloLayer])):
@@ -56,7 +57,8 @@ def computeLoss(outputs, targets, model):
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX, targetY,:4], bboxTarget[yoloLayer][batch][target])
+				# bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
@@ -68,8 +70,8 @@ def computeLoss(outputs, targets, model):
 			objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
-	bboxLoss *= 0.05
-	clsLoss *= 0.5
+	# bboxLoss *= 0.05
+	# clsLoss *= 0.5
 
 	loss = bboxLoss + clsLoss + objLoss
 
