@@ -142,6 +142,7 @@ def runParticle(args, progBar = None):
     result = float(output.stdout)
     if not isfinite(result):
         particle.positions.append(particle.position)
+        result = 999
         particle.results.append(999.0)
         particle.setRandomPosition()
     else:
@@ -158,15 +159,15 @@ def main():
 
     MAX_THREADS = 1
     MAX_ITERATIONS = 15 # This * particles is how many networks get trained
-    RUNS_PER_ITERATION = 3
+    RUNS_PER_ITERATION = 3 # Reinit particles every _ runs
     PARTICLES = 5
     SPEED = 0.0001 # initial learning rate of the particles
     MOMENTUM = 0.5 # decay of speed
 
     dimensions = {
-        "--lr": (0.0001, 0.1),
+        "--lr": (0.0001, 0.001),
         "--lr-drop": (1, 3),
-        "--lr2": (0.00001, 0.01),
+        "--lr2": (0.00001, 0.0001),
         "--momentum": (0.75, 0.95),
         "--decay": (0.00001, 0.0001)
     }
@@ -195,12 +196,13 @@ def main():
                     # Currently, max concurrent threads is just user defined.
                     # possible to estimate memory usage and automatically optimise concurrent thread count?
                     output = np.append(output, [out[0]])
+                    # print(f"Output got! {out[0]}")
                     if run != 0:
                         oldParticles.append(out[1])
                     newParticles.append(out[1])
                 print(f"Run {run} complete")
                 if output.min() <= bestResult or bestResult == -1:
-                    bestPosition = newParticles[np.nonzero(output == output.min())[0][0]].position
+                    bestPosition = newParticles[np.argmin(output)].position
                     bestResult = output.min()
                 if run % RUNS_PER_ITERATION == 0:
                     swarm.speed *= MOMENTUM
