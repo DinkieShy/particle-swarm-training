@@ -141,6 +141,8 @@ def runParticle(args, progBar = None):
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
     if not isfinite(result):
+        particle.positions.append(particle.position)
+        particle.results.append(999.0)
         particle.setRandomPosition()
     else:
         particle.update(result) # Calls the particle with it's result to update
