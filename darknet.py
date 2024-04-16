@@ -57,7 +57,7 @@ def computeLoss(outputs, targets, model):
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX, targetY,:4], bboxTarget[yoloLayer][batch][target])
+				bboxLoss += bboxLossFunc(torch.sigmoid(outputs[yoloLayer][batch,anchor,targetX, targetY,:4]), bboxTarget[yoloLayer][batch][target])
 				# bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
