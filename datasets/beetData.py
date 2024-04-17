@@ -13,16 +13,20 @@ import os
 import datasets.CustomTransforms as CustomTransforms
 
 class BeetDataset(Dataset):
-	def __init__(self, image_list):
+	def __init__(self, image_list, transform = None):
 		super().__init__()
 
 		self.images = []
 		self.labels = []
 		self.training = False
+		self.transform = transform
 
 		# assert os.path.isdir(image_list[0]), "image directory not found"
 
-		for filename in image_list:
+		for filename in readImageListFile(image_list):
+			# if filename[0] != "/":
+			# 	filename = "/" + filename
+			# print(filename)
 			if (filename[-3:].lower() == "jpg" or filename[-3:].lower() == "png") and os.path.isfile(filename[:-3] + "txt"):
 				self.images.append(filename)
 				self.labels.append(filename[:-3] + "txt")
@@ -68,9 +72,9 @@ class BeetDataset(Dataset):
 		# image.show()
 		# input()
 
-		for box in boxes:
-			area = (box[2]-box[0])*(box[3]-box[1])
-			areas.append(area)
+		# for box in boxes:
+		# 	area = (box[2]-box[0])*(box[3]-box[1])
+		# 	areas.append(area)
 
 		if self.training:
 			randomNumber = np.random.rand()
@@ -87,8 +91,8 @@ class BeetDataset(Dataset):
 					image, boxes = CustomTransforms.shearAndRotate(image, boxes, 0.125, np.random.rand(1) > 0.5, math.pi/6)
 
 		labels = torch.as_tensor(labels, dtype=torch.int64)
-		areas = torch.as_tensor(areas, dtype=torch.float32)
-		iscrowd = torch.zeros((len(boxes),), dtype=torch.int64)
+		# areas = torch.as_tensor(areas, dtype=torch.float32)
+		# iscrowd = torch.zeros((len(boxes),), dtype=torch.int64)
 		boxes = torch.as_tensor(boxes, dtype=torch.float32)
 
 		# image = F.normalize(transforms.ToTensor()(image))
@@ -97,9 +101,12 @@ class BeetDataset(Dataset):
 		target = {}
 		target["boxes"] = boxes
 		target["labels"] = labels
-		target["image_id"] = torch.tensor([index])
-		target["area"] = areas
-		target["iscrowd"] = iscrowd
+		# target["image_id"] = torch.tensor([index])
+		# target["area"] = areas
+		# target["iscrowd"] = iscrowd
+
+		if self.transform is not None:
+			image, targets = self.transform(image, target)
 
 		return image, target
 

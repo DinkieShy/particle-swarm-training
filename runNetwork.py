@@ -5,6 +5,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from math import isfinite
 import os
+import random
 
 import argparse
 from sys import argv
@@ -14,7 +15,7 @@ from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
-# from tqdm import tqdm
+from tqdm import tqdm
 # import time
 
 class Net(nn.Module):
@@ -45,8 +46,9 @@ class Net(nn.Module):
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
     runningloss = 0
-    # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
-    for dataBatch, targets in train_loader:
+    lastImage = 0
+    for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    	# for dataBatch, targets in train_loader:
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -61,9 +63,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
             # backwardStart = time.time()
             loss, _ = computeLoss(output, targets, model)
             if not isfinite(loss.item()):
+                print(f"Last image: {lastImage}")
                 return loss.item()
             runningloss += loss.item()
-            # pbar.set_postfix({'loss': f"{(runningloss/itr):0.4f}"})
+            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
+            pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
             # loss = sum(losses[0])
             # print(loss)
 
@@ -76,11 +80,14 @@ def train(args, model, device, train_loader, optimizer, epoch):
         #         f.write(f"{epoch}: {loss.item()}\n")
         #         f.close()
 
+        # print(loss.item())
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(),5)
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
         # backwardTime = time.time() - backwardStart
         # print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
+        lastImage = itr
     return runningloss / len(train_loader)
 
 def test(model, test_loader, device):
@@ -123,6 +130,7 @@ args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
 torch.manual_seed(args.seed)
+random.seed(args.seed)
 torch.backends.cudnn.benchmark = True
 
 if use_cuda:
@@ -131,17 +139,17 @@ else:
     device = torch.device("cpu")
 
 train_kwargs = {'batch_size': args.batch_size,
-                    'shuffle': True}
+                    'shuffle': False}
 if use_cuda:
     cuda_kwargs = {'num_workers': 1,
-                    'pin_memory': True}
+                    'pin_memory': False}
     train_kwargs.update(cuda_kwargs)
 
 
 def transform(image, targets):
     if image.size != (800, 1216):
         image, targets["boxes"] = customTransforms.resize(image, targets["boxes"], (800,1216))
-    image = F.normalize(transforms.ToTensor()(image))
+    image = F.normalize(image)
     return image, targets
 
 trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)

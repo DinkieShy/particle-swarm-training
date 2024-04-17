@@ -23,7 +23,7 @@ def computeIOUs(output, targetBox):
 	intersects = torch.zeros(desiredShape, device=device)
 	intersects[...,0] = torch.minimum(boxPredictions[...,6], targetBoxCorners[2])-torch.maximum(boxPredictions[...,4],targetBoxCorners[0])
 	intersects[...,1] = torch.minimum(boxPredictions[...,7], targetBoxCorners[3])-torch.maximum(boxPredictions[...,5],targetBoxCorners[1])
-	intersects = torch.prod(intersects, dim=-1)
+	intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1)
 	ious = intersects / ((torch.prod(boxPredictions[...,2:4], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
 
 	return ious
@@ -105,7 +105,7 @@ def buildTargets(outputs, targets, model, device="cpu"):
 			w = targets[i]["boxes"][box][2] - targets[i]["boxes"][box][0]
 			h = targets[i]["boxes"][box][3] - targets[i]["boxes"][box][1]
 			x = targets[i]["boxes"][box][0] + w/2
-			y = targets[i]["boxes"][box][3] + h/2
+			y = targets[i]["boxes"][box][1] + h/2
 			cls = targets[i]["labels"][box] - 1
 			newTarget[0], newTarget[1], newTarget[2], newTarget[3], newTarget[4] = x, y, w, h, cls
 			if targetTensors[i].shape[1] == 0:
@@ -257,7 +257,7 @@ class Darknet(nn.Module):
 					x[..., 0] = (x[...,0] + self.grid[...,0]) * stride[0]
 					x[..., 1] = (x[...,1] + self.grid[...,1]) * stride[1]
 					# Multiply width/height by anchors
-					x[..., 2:4] = torch.exp(x[...,2:4]) * torch.tensor(list(chain(*anchors))).view(1, -1, 1, 1, 2)
+					x[..., 2:4] = torch.exp(x[...,2:4]) * torch.tensor(list(chain(*anchors)),device=device).view(1, -1, 1, 1, 2)
 					# Sigmoid logits
 					x[..., 4:] = x[..., 4:].sigmoid()
 					x = x.view(batchSize, -1, bboxAttributes)
