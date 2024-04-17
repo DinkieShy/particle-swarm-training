@@ -82,7 +82,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
         # print(loss.item())
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(),5)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),1)
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)
         # backwardTime = time.time() - backwardStart

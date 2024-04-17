@@ -62,17 +62,12 @@ def computeLoss(outputs, targets, model):
 				# Restrict to valid coords in case target center outside coord space somehow
 				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
 
-				# outputs[yoloLayer][batch,anchor,...,0:2] = torch.sigmoid(outputs[yoloLayer][batch,anchor,...,0:2]) # transform detections
-				# boxPredictions = outputs[yoloLayer][batch,anchor,...,:4]
-				# boxPredictions[...,2:4] *= outputs[yoloLayer][batch,anchor,...,2:4]*model.anchorGroups[anchors[yoloLayer][batch][target]]
-
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
 				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
-				# bboxLoss += 1.0 - ious[targetX,targetY] # 1-iou because we want to MAXIMISE iou
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
@@ -88,7 +83,6 @@ def computeLoss(outputs, targets, model):
 	clsLoss *= 0.5
 
 	loss = bboxLoss + clsLoss + objLoss
-	# print(loss.item())
 
 	return loss, (bboxLoss, clsLoss, objLoss)
 
