@@ -46,8 +46,8 @@ class Net(nn.Module):
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train() 
     runningloss = 0
-    lastImage = 0
-    for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    for itr, (dataBatch, targets) in enumerate(train_loader):
     	# for dataBatch, targets in train_loader:
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
@@ -63,11 +63,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
             # backwardStart = time.time()
             loss, _ = computeLoss(output, targets, model)
             if not isfinite(loss.item()):
-                print(f"Last image: {lastImage}")
                 return loss.item()
             runningloss += loss.item()
             # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
-            pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
+            # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
             # loss = sum(losses[0])
             # print(loss)
 
@@ -81,13 +80,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
         #         f.close()
 
         # print(loss.item())
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(),1)
-        optimizer.step()
-        optimizer.zero_grad(set_to_none=True)
+        if loss.item() < 100000:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(),1)
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
         # backwardTime = time.time() - backwardStart
         # print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
-        lastImage = itr
     return runningloss / len(train_loader)
 
 def test(model, test_loader, device):
@@ -139,10 +138,10 @@ else:
     device = torch.device("cpu")
 
 train_kwargs = {'batch_size': args.batch_size,
-                    'shuffle': False}
+                    'shuffle': True}
 if use_cuda:
     cuda_kwargs = {'num_workers': 1,
-                    'pin_memory': False}
+                    'pin_memory': True}
     train_kwargs.update(cuda_kwargs)
 
 

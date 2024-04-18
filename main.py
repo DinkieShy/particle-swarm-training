@@ -165,7 +165,7 @@ def main():
     MOMENTUM = 0.5 # decay of speed
 
     dimensions = {
-        "--lr": (0.0001, 0.001),
+        "--lr": (0.0001, 0.01),
         "--lr-drop": (1, 3),
         "--lr2": (0.00001, 0.0001)
         # "--momentum": (0.75, 0.95),

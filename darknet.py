@@ -21,9 +21,13 @@ def computeIOUs(output, targetBox):
 	targetBoxCorners[2:] = targetBox[2:] + targetBox[:2]/2
 	desiredShape[-1] = 2
 	intersects = torch.zeros(desiredShape, device=device)
+	invalidIntersects = 	torch.stack((boxPredictions[...,4] > targetBoxCorners[2], boxPredictions[...,6] < targetBoxCorners[0],
+						 				 boxPredictions[...,5] > targetBoxCorners[3], boxPredictions[...,7] < targetBoxCorners[1]),dim=-1)
+	invalidIntersects = torch.any(invalidIntersects, -1)
 	intersects[...,0] = torch.minimum(boxPredictions[...,6], targetBoxCorners[2])-torch.maximum(boxPredictions[...,4],targetBoxCorners[0])
 	intersects[...,1] = torch.minimum(boxPredictions[...,7], targetBoxCorners[3])-torch.maximum(boxPredictions[...,5],targetBoxCorners[1])
 	intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1)
+	intersects[~invalidIntersects] = 0
 	ious = intersects / ((torch.prod(boxPredictions[...,2:4], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
 
 	return ious
