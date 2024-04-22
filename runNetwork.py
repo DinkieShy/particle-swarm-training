@@ -43,9 +43,10 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
     
-def train(args, model, device, train_loader, optimizer, epoch):
+def train(args, model, device, train_loader, optimizer, batchSize, epoch):
     model.train() 
     runningloss = 0
+    optimizer.zero_grad()
     # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
     for itr, (dataBatch, targets) in enumerate(train_loader):
     	# for dataBatch, targets in train_loader:
@@ -75,14 +76,15 @@ def train(args, model, device, train_loader, optimizer, epoch):
             loss = F.nll_loss(output, targets)    
 
         # if __name__ == "__main__":
-        #     with open("./trainingLog.txt", "a") as f:
-        #         f.write(f"{epoch}: {loss.item()}\n")
-        #         f.close()
+        with open("./trainingLog.txt", "a") as f:
+            f.write(f"{epoch}: {loss.item()}\n")
+            f.close()
 
         # print(loss.item())
-        if loss.item() < 100000:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(),1)
+        # if loss.item() < 100000:
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(),3)
+        if (itr % batchSize == 0 and itr > 0) or itr+1 == len(train_loader):
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
         # backwardTime = time.time() - backwardStart
@@ -105,8 +107,10 @@ def test(model, test_loader, device):
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch Network Training')
-parser.add_argument('--batch-size', type=int, default=1, metavar='N',
-                    help='input batch size for training (default: 64)')
+parser.add_argument("--training-batch", type=int, default=2, metavar="B",
+                    help="input inputs to train at a time (default: 2)")
+parser.add_argument('--batch-size', type=int, default=12, metavar='N',
+                    help='number of training batches to step optimiser (default: 12)')
 parser.add_argument('--epochs', type=int, default=15, metavar='N',
                     help='number of epochs to train (default: 14)')
 parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
@@ -137,7 +141,7 @@ if use_cuda:
 else:
     device = torch.device("cpu")
 
-train_kwargs = {'batch_size': args.batch_size,
+train_kwargs = {'batch_size': args.training_batch,
                     'shuffle': True}
 if use_cuda:
     cuda_kwargs = {'num_workers': 1,
@@ -173,7 +177,7 @@ f = open("./trainingLog.txt", "w")
 f.close()
 
 for epoch in range(1, args.epochs+1):
-    loss = train(args, model, device, train_loader, optimizer, epoch)
+    loss = train(args, model, device, train_loader, optimizer, args.batch_size, epoch)
     if not isfinite(loss):
         break
     # Log training loss to file (only use for testing; will break main.py)

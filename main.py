@@ -125,7 +125,7 @@ def runParticle(args, progBar = None):
     particle = args[1]
     # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5", "--batch-size", "4"]
+    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
@@ -209,19 +209,18 @@ def main():
                 else:
                     swarm.particles = newParticles
                 print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
+                particleResults = []
+                for i in oldParticles:
+                    result = {}
+                    for ii in range(len(i.results)):
+                        result[i.id] = [i.positions[ii], i.results[ii]]
+                    particleResults.append(result)
+                
+                with open("./swarmResult.json", "w") as file:
+                    file.write(dumps(particleResults))
                 
         except TimeoutError:
             assert False, "Timeout error"
-
-    particleResults = []
-    for i in oldParticles:
-        result = {}
-        for ii in range(len(i.results)):
-            result[i.id] = [i.positions[ii], i.results[ii]]
-        particleResults.append(result)
-    
-    with open("./swarmResult.json", "w") as file:
-        file.write(dumps(particleResults))
 
 if __name__ == "__main__":
     main()
