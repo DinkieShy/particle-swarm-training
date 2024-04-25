@@ -125,7 +125,7 @@ def runParticle(args, progBar = None):
     particle = args[1]
     # on non-docker OS, need to specify python exe
     # args = ["./env/Scripts/python.exe", "runNetwork.py"]
-    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5"]
+    args = [f"{executable}", "runNetwork.py", "--network",  f"{args[0].network}", "--epochs", "5", "--training-batch", "3"]
     for (key, value) in particle.position.items():
         args.append(key)
         args.append(str(value))
@@ -142,8 +142,8 @@ def runParticle(args, progBar = None):
     result = float(output.stdout)
     if not isfinite(result):
         particle.positions.append(particle.position)
-        result = 999
-        particle.results.append(999.0)
+        result = float_info.max
+        particle.results.append(result)
         particle.setRandomPosition()
     else:
         particle.update(result) # Calls the particle with it's result to update
@@ -160,14 +160,16 @@ def main():
     MAX_THREADS = 1
     MAX_ITERATIONS = 15 # This * particles is how many networks get trained
     RUNS_PER_ITERATION = 15 # Reinit particles every _ runs
-    PARTICLES = 20
+    PARTICLES = 5
     SPEED = 0.0001 # initial learning rate of the particles
     MOMENTUM = 0.5 # decay of speed
 
     dimensions = {
         "--lr": (0.0001, 0.01),
         "--lr-drop": (1, 3),
-        "--lr2": (0.00001, 0.0001)
+        "--lr2": (0.00001, 0.0001),
+        "--grad-clip": (0.1, 5.0),
+        "--batch-size": (4, 64)
         # "--momentum": (0.75, 0.95),
         # "--decay": (0.00001, 0.0001)
     }
@@ -176,6 +178,7 @@ def main():
         ["--lr", "--lr2"],
         ["--lr2", "--lr-drop"],
         ["--lr", "--lr-drop"],
+        ["--lr", "--grad-clip"]
     ]
 
     swarm = ParticleSwarm(dimensions, count=PARTICLES, pairs = favouredPairs, speed=SPEED)

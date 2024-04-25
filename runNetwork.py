@@ -43,7 +43,7 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
     
-def train(args, model, device, train_loader, optimizer, batchSize, epoch):
+def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradClip, log):
     model.train() 
     runningloss = 0
     optimizer.zero_grad()
@@ -75,15 +75,15 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch):
             output = model(data)
             loss = F.nll_loss(output, targets)    
 
-        # if __name__ == "__main__":
-        with open("./trainingLog.txt", "a") as f:
-            f.write(f"{epoch}: {loss.item()}\n")
-            f.close()
+        if log:
+            with open("./trainingLog.txt", "a") as f:
+                f.write(f"{epoch}: {loss.item()}\n")
+                f.close()
 
         # print(loss.item())
         # if loss.item() < 100000:
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(),1)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),gradClip)
         if (itr % batchSize == 0 and itr > 0) or itr+1 == len(train_loader):
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
@@ -121,7 +121,7 @@ parser.add_argument('--lr-drop', type=int, default=10, metavar="LRD",
                     help="how many epochs to wait before dropping learning rate")
 parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
                     help="momentum value for SGD")
-parser.add_argument('--decay', type=float, default=0.00001, metavar='WD',
+parser.add_argument('--decay', type=float, default=0, metavar='WD',
                     help="weight decay value")
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
@@ -129,6 +129,10 @@ parser.add_argument('--test', type=bool, default=False, metavar='T',
                     help='run on test set (default: False)')
 parser.add_argument("--network", type=str, default="darknet", metavar="network",
                     help="Network to use (default: \"darknet\")")
+parser.add_argument("--grad-clip", type=float, default=0.5, metavar="x",
+                    help="clip gradients to x during training (default 0.5)")
+parser.add_argument("--log", type=bool, default=False,
+                    help="output training losses to ./trainingLog.txt (default False)")
 args = parser.parse_args()
 use_cuda = torch.cuda.is_available()
 
@@ -177,7 +181,7 @@ f = open("./trainingLog.txt", "w")
 f.close()
 
 for epoch in range(1, args.epochs+1):
-    loss = train(args, model, device, train_loader, optimizer, args.batch_size, epoch)
+    loss = train(args, model, device, train_loader, optimizer, args.batch_size, epoch, args.grad_clip, args.log)
     if not isfinite(loss):
         break
     # Log training loss to file (only use for testing; will break main.py)
