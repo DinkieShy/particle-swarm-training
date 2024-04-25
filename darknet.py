@@ -83,8 +83,8 @@ def computeLoss(outputs, targets, model):
 		objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
-	bboxLoss *= 0.05
-	clsLoss *= 0.5
+	# bboxLoss *= 0.05
+	# clsLoss *= 0.5
 
 	loss = bboxLoss + clsLoss + objLoss
 

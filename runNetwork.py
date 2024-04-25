@@ -83,7 +83,7 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch):
         # print(loss.item())
         # if loss.item() < 100000:
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(),3)
+        torch.nn.utils.clip_grad_norm_(model.parameters(),1)
         if (itr % batchSize == 0 and itr > 0) or itr+1 == len(train_loader):
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
