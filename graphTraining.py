@@ -29,16 +29,24 @@ for line in lines:
 plt.figure(figsize=(19.2,10.8))
 
 xMarkers = []
+bboxAx = plt.subplot(2,1,2)
+clsAx = plt.subplot(2,2,1)
+objAx = plt.subplot(2,2,2)
+bboxAx.set_title("Bounding box loss (MSE)")
+clsAx.set_title("Classification loss (BCE)")
+objAx.set_title("Object Confidence loss (BCE)")
+bboxAx.set_ylim(0,1000)
+
 for epoch in range(maxEpoch+1):
     iterationsOffset = epoch*len(bboxLosses[0])
     xMarkers.append(iterationsOffset)
     iterations = [x+iterationsOffset for x in range(len(bboxLosses[epoch]))]
-    ax = plt.subplot(2,1,2)
-    ax.plot(iterations, bboxLosses[epoch], c=colours[epoch%2])
-    ax.set_ylim(0,2000)
-    plt.subplot(2,2,1).plot(iterations, clsLosses[epoch], c=colours[epoch%2])
-    plt.subplot(2,2,2).plot(iterations, objLosses[epoch], c=colours[epoch%2])
+    bboxAx.plot(iterations, bboxLosses[epoch], c=colours[epoch%2])
+    clsAx.plot(iterations, clsLosses[epoch], c=colours[epoch%2])
+    objAx.plot(iterations, objLosses[epoch], c=colours[epoch%2])
 
 # plt.ylim(0, 5000)
-plt.xticks(xMarkers)
+bboxAx.set_xticks(xMarkers)
+clsAx.set_xticks(xMarkers)
+objAx.set_xticks(xMarkers)
 plt.savefig("./trainingGraph.png")
