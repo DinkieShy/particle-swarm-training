@@ -21,7 +21,7 @@ objLosses = [[] for _ in range(maxEpoch+1)]
 for line in lines:
     epoch, loss = line.split(": ")
     epoch = int(epoch)
-    loss = loss[1:-1].split(",")
+    loss = loss[1:-2].split(",")
     bboxLosses[epoch-1].append(float(loss[0]))
     clsLosses[epoch-1].append(float(loss[1]))
     objLosses[epoch-1].append(float(loss[2]))
@@ -33,10 +33,12 @@ for epoch in range(maxEpoch+1):
     iterationsOffset = epoch*len(bboxLosses[0])
     xMarkers.append(iterationsOffset)
     iterations = [x+iterationsOffset for x in range(len(bboxLosses[epoch]))]
-    plt.subplot(2,1,2).plot(iterations, bboxLosses[epoch], c=colours[epoch%2])
-    plt.subplot(2,2,0).plot(iterations, clsLosses[epoch], c=colours[epoch%2])
-    plt.subplot(2,2,1).plot(iterations, objLosses[epoch], c=colours[epoch%2])
+    ax = plt.subplot(2,1,2)
+    ax.plot(iterations, bboxLosses[epoch], c=colours[epoch%2])
+    ax.set_ylim(0,2000)
+    plt.subplot(2,2,1).plot(iterations, clsLosses[epoch], c=colours[epoch%2])
+    plt.subplot(2,2,2).plot(iterations, objLosses[epoch], c=colours[epoch%2])
 
-plt.ylim(0, 5000)
+# plt.ylim(0, 5000)
 plt.xticks(xMarkers)
 plt.savefig("./trainingGraph.png")
