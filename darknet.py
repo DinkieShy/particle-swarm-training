@@ -43,26 +43,26 @@ def computeLoss(outputs, targets, model):
 	clsTarget, bboxTarget, anchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
-	bboxLossFunc = nn.MSELoss()
+	bboxLossFunc = nn.MSELoss(reduction="mean")
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
 			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*torch.tensor(model.anchorGroups[yoloLayer][anchor], device=device)
-		mask = torch.zeros_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
+		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 		objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 		for batch in range(len(clsTarget[yoloLayer])):
 			numTargets = clsTarget[yoloLayer][batch].shape[0]
 			gridTargets = [] # Grid cells which contain the center of a target bbox
 			for i in range(numTargets):
-				gridTargets.append([int(torch.floor(i)) for i in bboxTarget[yoloLayer][batch][i,:2]])
+				gridTargets.append([int(torch.floor(ii)) for ii in bboxTarget[yoloLayer][batch][i,:2]])
+
+			for anchor in range(mask.shape[1]):
+				if anchor not in anchors[yoloLayer][batch]: # Only incur loss for anchor with target
+					mask[batch,anchor,...] = 0 # Mask of which cells incur Objectness loss
 
 			for target in range(numTargets):
-				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
-				mask[batch,anchor,...] = 1 # Mask of which cells incur Objectness loss
-
-			for target in range(numTargets):
-				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
+				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
 				# Restrict to valid coords in case target center outside coord space somehow
 				anchor = int(anchors[yoloLayer][batch][target]) # Only incur loss for anchor with target
 
@@ -71,10 +71,12 @@ def computeLoss(outputs, targets, model):
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
+				# print(bboxTarget[yoloLayer][batch][target]- torch.tensor([targetX,targetY,0,0],device=device))
+				# input(outputs[yoloLayer][batch,anchor,targetX,targetY,:4])
 				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
-				targetX, targetY = min(gridTargets[i][0], outputs[yoloLayer].shape[2]-1), min(gridTargets[i][1], outputs[yoloLayer].shape[3]-1)
+				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
 				anchor = int(anchors[yoloLayer][batch][target])
 				mask[batch,anchor,targetX,targetY] = 1 # Need to incur loss for target cell regardless of IoU
 
@@ -83,8 +85,13 @@ def computeLoss(outputs, targets, model):
 		objLoss += objLossFunc(outputs[yoloLayer][...,4]*mask, objTarget)
 
 	bboxLoss /= bboxLossAvgCount
-	# bboxLoss *= 0.05
-	# clsLoss *= 0.5
+	clsLoss /= bboxLossAvgCount
+	bboxLoss *= 0.05
+	clsLoss *= 0.5
+
+	bboxLoss /= len(outputs)
+	clsLoss /= len(outputs)
+	objLoss /= len(outputs)
 
 	loss = bboxLoss + clsLoss + objLoss
 
@@ -112,7 +119,6 @@ def buildTargets(outputs, targets, model, device="cpu"):
 				targetTensors[i] = torch.cat((targetTensors[i], newTarget.unsqueeze(0)))
 
 	clsTarget, bboxTarget, targetAnchors = [], [], []
-
 
 	yoloLayers = [i for i in range(len(model.moduleList)) if model.blocks[i]["type"] == "yolo"]
 	for i, layer in enumerate(yoloLayers):

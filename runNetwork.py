@@ -62,7 +62,7 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
             output = model(data, targets, CUDA=torch.cuda.is_available())
             # modelTime = time.time() - modelStart
             # backwardStart = time.time()
-            loss, _ = computeLoss(output, targets, model)
+            loss, losses = computeLoss(output, targets, model)
             if not isfinite(loss.item()):
                 return loss.item()
             runningloss += loss.item()
@@ -77,7 +77,7 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
 
         if log:
             with open("./trainingLog.txt", "a") as f:
-                f.write(f"{epoch}: {loss.item()}\n")
+                f.write(f"{epoch}: ({losses[0].item()},{losses[1].item()},{losses[2].item()})\n")
                 f.close()
 
         # print(loss.item())
