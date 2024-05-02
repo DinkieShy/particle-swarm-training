@@ -15,6 +15,8 @@ from datasets.beetData import AugmentedBeetDataset
 from datasets import CustomTransforms as customTransforms
 from utils import collate_fn
 
+from torchvision.models.detection import fasterrcnn_resnet50_fpn
+
 from tqdm import tqdm
 # import time
 
@@ -70,7 +72,11 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
             # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
             # loss = sum(losses[0])
             # print(loss)
-
+        elif args.network == "fasterrcnn":
+            loss = model(data, targets)
+            loss = sum([val for val in loss.values()])
+            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
+            # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
         else:
             output = model(data)
             loss = F.nll_loss(output, targets)    
@@ -172,6 +178,8 @@ if args.network == "darknet":
     cfgPath = os.path.abspath("./cfg/yolov3Custom.cfg")
     assert os.path.exists(cfgPath)
     model = Darknet(cfgPath).to(device)
+elif args.network == "fasterrcnn":
+    model = fasterrcnn_resnet50_fpn(weights=None, weights_backbone=None, num_classes=numClasses+1).to(device)
 elif args.network == "simplenet":
     model = Net().to(device)
 
