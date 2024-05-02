@@ -51,7 +51,6 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
     optimizer.zero_grad()
     # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
     for itr, (dataBatch, targets) in enumerate(train_loader):
-    	# for dataBatch, targets in train_loader:
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -60,41 +59,36 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
         if args.network == "darknet":
             from darknet import computeLoss
             model.losses = []
-            # modelStart = time.time()
             output = model(data, targets, CUDA=torch.cuda.is_available())
-            # modelTime = time.time() - modelStart
-            # backwardStart = time.time()
             loss, losses = computeLoss(output, targets, model)
             if not isfinite(loss.item()):
                 return loss.item()
             runningloss += loss.item()
-            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
-            # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
-            # loss = sum(losses[0])
-            # print(loss)
+
+            if log:
+                with open("./trainingLog.txt", "a") as f:
+                    f.write(f"{epoch}: ({losses[0].item()},{losses[1].item()},{losses[2].item()})\n")
+                    f.close()
         elif args.network == "fasterrcnn":
             loss = model(data, targets)
+            input(loss)
             loss = sum([val for val in loss.values()])
             # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
             # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
+            if log:
+                with open("./trainingLog.txt", "a") as f:
+                    f.write(f"{epoch}: ({loss["loss_box_reg"].item()},{loss["loss_classifier"].item()},{loss["loss_objectness"].item()})\n")
+                    f.close()
         else:
             output = model(data)
             loss = F.nll_loss(output, targets)    
 
-        if log:
-            with open("./trainingLog.txt", "a") as f:
-                f.write(f"{epoch}: ({losses[0].item()},{losses[1].item()},{losses[2].item()})\n")
-                f.close()
-
         # print(loss.item())
-        # if loss.item() < 100000:
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(),gradClip)
         if (itr % batchSize == 0 and itr > 0) or itr+1 == len(train_loader):
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
-        # backwardTime = time.time() - backwardStart
-        # print(f"Model time: {modelTime}s, Backward time: {backwardTime}s")
     return runningloss / len(train_loader)
 
 def test(model, test_loader, device):
