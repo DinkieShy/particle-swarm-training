@@ -49,8 +49,8 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
     model.train() 
     runningloss = 0
     optimizer.zero_grad()
-    # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
-    for itr, (dataBatch, targets) in enumerate(train_loader):
+    for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    # for itr, (dataBatch, targets) in enumerate(train_loader):
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -64,21 +64,21 @@ def train(args, model, device, train_loader, optimizer, batchSize, epoch, gradCl
             if not isfinite(loss.item()):
                 return loss.item()
             runningloss += loss.item()
-
+            pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
             if log:
                 with open("./trainingLog.txt", "a") as f:
                     f.write(f"{epoch}: ({losses[0].item()},{losses[1].item()},{losses[2].item()})\n")
                     f.close()
         elif args.network == "fasterrcnn":
             loss = model(data, targets)
-            input(loss)
-            loss = sum([val for val in loss.values()])
-            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
+            pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
             # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
             if log:
                 with open("./trainingLog.txt", "a") as f:
-                    f.write(f"{epoch}: ({loss["loss_box_reg"].item()},{loss["loss_classifier"].item()},{loss["loss_objectness"].item()})\n")
+                    f.write(f'{epoch}: ({loss["loss_box_reg"].item()},{loss["loss_classifier"].item()},{loss["loss_objectness"].item()})\n')
                     f.close()
+            loss = sum([val for val in loss.values()])
+            runningloss += loss.item()
         else:
             output = model(data)
             loss = F.nll_loss(output, targets)    

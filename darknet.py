@@ -40,15 +40,16 @@ def computeLoss(outputs, targets, model):
 	bboxLossAvgCount = 0
 
 	# Convert targets to coord space of YOLO layer
-	clsTarget, bboxTarget, anchors = buildTargets(outputs, targets, model, device=device)
+	clsTarget, bboxTarget, anchors, transformedAnchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
 	bboxLossFunc = nn.MSELoss(reduction="mean")
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
+		normaliseWH = torch.tensor(list(outputs[yoloLayer].shape)[2:4], device=device)
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
-			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*torch.tensor(model.anchorGroups[yoloLayer][anchor], device=device)
+			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*transformedAnchors[anchor]
 		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 		objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 		for batch in range(len(clsTarget[yoloLayer])):
@@ -69,11 +70,11 @@ def computeLoss(outputs, targets, model):
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
+				bboxTarget[yoloLayer][batch][target][2:4] = bboxTarget[yoloLayer][batch][target][2:4] / normaliseWH
+
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				# print(bboxTarget[yoloLayer][batch][target]- torch.tensor([targetX,targetY,0,0],device=device))
-				# input(outputs[yoloLayer][batch,anchor,targetX,targetY,:4])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4] / torch.tensor([1,1,outputs[yoloLayer].shape[2],outputs[yoloLayer].shape[3]], device=device), (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
@@ -162,12 +163,14 @@ def buildTargets(outputs, targets, model, device="cpu"):
 			for ii in range(numTargets):
 				clsLogits[ii, int(targets[bestMatches][ii, 4])] = 1
 				targetAnchorsTensor[ii] = targets[bestMatches][ii, 5]
+			# targets[bestMatches][...,2:4] /= torch.tensor(outputs[i].shape[2:4], device=device)
 
 			clsTarget[-1].append(clsLogits)
 			bboxTarget[-1].append(targets[bestMatches][...,:4])
 			targetAnchors[-1].append(targetAnchorsTensor)
 
-	return clsTarget, bboxTarget, targetAnchors
+
+	return clsTarget, bboxTarget, targetAnchors, anchors
 
 def compareRatio(width, height):
 	# returns a score of how similar the boxes are, ignoring scale
