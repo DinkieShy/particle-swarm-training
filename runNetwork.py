@@ -183,7 +183,7 @@ def main():
     f.close()
 
     for epoch in range(1, args.epochs+1):
-        loss = train(args, model, device, train_loader, optimizer, args.batch_size, epoch, args.grad_clip, args.log)
+        loss = train(args.network, model, device, train_loader, optimizer, args.batch_size, epoch, args.grad_clip, args.log)
         if not isfinite(loss):
             break
         # Log training loss to file (only use for testing; will break main.py)

@@ -87,7 +87,7 @@ def computeLoss(outputs, targets, model):
 
 	bboxLoss /= bboxLossAvgCount
 	clsLoss /= bboxLossAvgCount
-	bboxLoss *= 0.05
+	# bboxLoss *= 0.05
 	clsLoss *= 0.5
 
 	bboxLoss /= len(outputs)
