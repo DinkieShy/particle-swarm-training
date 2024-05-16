@@ -49,7 +49,7 @@ def computeLoss(outputs, targets, model):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
 		normaliseWH = torch.tensor(list(outputs[yoloLayer].shape)[2:4], device=device)
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
-			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*transformedAnchors[anchor]
+			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*(transformedAnchors[anchor]/normaliseWH)
 		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 		objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 		for batch in range(len(clsTarget[yoloLayer])):
@@ -74,7 +74,7 @@ def computeLoss(outputs, targets, model):
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4] / torch.tensor([1,1,outputs[yoloLayer].shape[2],outputs[yoloLayer].shape[3]], device=device), (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
@@ -87,7 +87,7 @@ def computeLoss(outputs, targets, model):
 
 	bboxLoss /= bboxLossAvgCount
 	clsLoss /= bboxLossAvgCount
-	# bboxLoss *= 0.05
+	bboxLoss *= 0.1
 	clsLoss *= 0.5
 
 	bboxLoss /= len(outputs)

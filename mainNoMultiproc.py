@@ -140,23 +140,23 @@ def main():
                     help="Network to use (default: \"simplenet\")")
     args = parser.parse_args()
 
-    MAX_ITERATIONS = 15 # This * particles is how many networks get trained
-    RUNS_PER_ITERATION = 15 # Reinit particles every _ runs
+    MAX_ITERATIONS = 16 # This * particles is how many networks get trained
+    RUNS_PER_ITERATION = 5 # Reinit particles every _ runs
     PARTICLES = 5
-    SPEED = 0.0001 # initial learning rate of the particles
+    SPEED = 0.01 # initial learning rate of the particles
     MOMENTUM = 0.5 # decay of speed
 
     TRAINING_BATCH = 3
-    BATCH_SIZE=20
+    # BATCH_SIZE=20
     SEED = 1
-    EPOCHS = 10
+    EPOCHS = 5
 
     dimensions = {
         "lr": (0.001, 0.1),
         "lr_drop": (1, 3),
-        "lr2": (0.00001, 0.001),
-        "grad_clip": (0.05, 5)
-        # "batch_size": (4, 64)
+        "lr2": (0.0001, 0.01),
+        "grad_clip": (0.01, 1.0),
+        "batch_size": (4, 64)
         # "momentum": (0.75, 0.95),
         # "decay": (0.00001, 0.0001)
     }
@@ -203,12 +203,14 @@ def main():
     # valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
     # test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
 
+    results = {}
     for run in range(MAX_ITERATIONS):
         output = np.array([], dtype=np.float32)
         print(f"Starting run {run}")
         output = []
         for i in range(PARTICLES):
             gradClip = swarm.particles[i].position["grad_clip"]
+            batch_size = swarm.particles[i].position["batch_size"]
             numClasses = 2
             if args.network == "darknet":
                 cfgPath = os.path.abspath("./cfg/yolov3Custom.cfg")
@@ -221,7 +223,7 @@ def main():
             optimizer = optim.SGD(model.parameters(), lr=swarm.particles[i].position["lr"])
             for epoch in range(1, EPOCHS+1):
                 assert torch.cuda.is_available(), "...what?"
-                loss = train(args.network, model, device, train_loader, optimizer, BATCH_SIZE, epoch, gradClip, False)
+                loss = train(args.network, model, device, train_loader, optimizer, batch_size, epoch, gradClip, False)
                 if not isfinite(loss):
                     break
                 if epoch == swarm.particles[i].position["lr_drop"]:
@@ -230,27 +232,23 @@ def main():
             del model
             del optimizer
             print(loss)
-            swarm.particles[i].positions.append(swarm.particles[i].position)
-            swarm.particles[i].update(result)
+            swarm.particles[i].update(loss)
             output.append(loss)
             
         print(f"Run {run} complete")
-        if output.min() <= bestResult or bestResult == -1:
+        if min(output) <= bestResult or bestResult == -1:
             bestPosition = swarm.particles[np.argmin(output)].position
-            bestResult = output.min()
+            bestResult = min(output)
+        print(f'max: {max(output)}, min: {min(output)}, mean: {sum(output)/len(output)}, median: {np.median(output)}')
+        for i in swarm.particles:
+            results[i.id] = {"params": i.dimensionsBeingChanged}
+            results[i.id]["path"] = [[i.positions[ii], i.results[ii]] for ii in range(len(i.results))]
         if run % RUNS_PER_ITERATION == 0:
             swarm.speed *= MOMENTUM
             swarm.initialiseSwarm(bestPosition, bestResult) # Initialise next set of particles based on all-time best result
-        print(f'max: {output.max()}, min: {output.min()}, mean: {output.mean()}, median: {np.median(output)}')
-        particleResults = []
-        for i in oldParticles:
-            result = {}
-            for ii in range(len(i.results)):
-                result[i.id] = [i.positions[ii], i.results[ii]]
-            particleResults.append(result)
         
         with open("./swarmResult.json", "w") as file:
-            file.write(dumps(particleResults))
+            file.write(dumps(results, indent=2))
 
 if __name__ == "__main__":
     main()
