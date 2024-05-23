@@ -91,14 +91,19 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, network):
+def test(model, test_loader, device, network):
     IOU_THRESH = 0.5 # IoU score to count as true positive
     CONF_THRESH = 0.9 # Confidence threshold below which predictions are ignored
     model.eval()
     with torch.no_grad():
-        for (image, label) in test_loader:
+        for (dataBatch, targets) in tqdm(test_loader):
+            data = dataBatch[0].unsqueeze(0)
+            for i in range(1, len(dataBatch)):
+                data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
+            data = data.to(device)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
             if network == "darknet":
-                outputs = model(image, CUDA=torch.cuda.is_available())
+                outputs = model(data, CUDA=torch.cuda.is_available())
 
 def main():
     # Training settings
@@ -159,7 +164,7 @@ def main():
         image = F.normalize(image)
         return image, targets
 
-    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
     train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
     valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
@@ -176,7 +181,7 @@ def main():
         model = Net().to(device)
 
     if args.load != "":
-        model.load_state_dict(args.load)
+        model.load_state_dict(torch.load(args.load, map_location=device))
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr)
 
@@ -192,7 +197,7 @@ def main():
             for i in optimizer.param_groups:
                 i['lr'] = args.lr2
 
-    print(loss)
+    # print(loss)
     if args.save != "":
         torch.save(model.state_dict(), args.save)
 

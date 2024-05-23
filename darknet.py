@@ -188,7 +188,7 @@ class Darknet(nn.Module):
 		self.lossFuncs = {}
 		self.iterDone = False
 		self.layersToStore = []
-		self.grid = torch.zeros(1)
+		self.grid = torch.zeros((1,1,1,1))
 		self.yoloOutputs = []
 
 	def makeGrid(self, xSize, ySize, device="cpu"):
@@ -250,16 +250,18 @@ class Darknet(nn.Module):
 				anchors = self.moduleList[index][0].anchors
 				self.anchorGroups.append(anchors)
 				bboxAttributes = 5 + int(self.net_info["numClasses"])
-
-				batchSize, _, xSize, ySize = x.shape
+				batchSize, _, xSize, ySize = x.shape # X and Y wrong way round?
 				x = x.view(batchSize, len(anchors), bboxAttributes, xSize, ySize).permute(0, 1, 3, 4, 2).contiguous()
+				print(x.shape)
 				# Gets network output in the format [batchSize, anchor, xCoord, yCoord, objectness, class logits...]
 
 				if not self.training:
 					# Do inference, convert from YOLO coordinate space to image
 					stride = tuple([imageSize[i]/x.size(2+i) for i in range(2)])
-					if self.grid.shape[2:4] != x.shape[2:4]:
+					if self.grid.shape[2] != xSize and self.grid.shape[3] != ySize:
+						print("reshaped grid")
 						self.grid = self.makeGrid(xSize, ySize, device=device)
+						print(self.grid.shape)
 					# Add grid to convert from offset to coords, multiply by stride to get coords in image space
 					x[..., 0] = (x[...,0] + self.grid[...,0]) * stride[0]
 					x[..., 1] = (x[...,1] + self.grid[...,1]) * stride[1]
