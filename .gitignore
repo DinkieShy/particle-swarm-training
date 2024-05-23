@@ -3,4 +3,5 @@ data/
 __pycache__/
 trainingLog.txt
 trainingGraph.png
-swarmResult.json
+*.json
+swarmOutput/

@@ -59,7 +59,7 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
         if network == "darknet":
             from darknet import computeLoss
             model.losses = []
-            output = model(data, targets, CUDA=torch.cuda.is_available())
+            output = model(data, CUDA=torch.cuda.is_available())
             loss, losses = computeLoss(output, targets, model)
             if not isfinite(loss.item()):
                 return loss.item()
@@ -91,19 +91,14 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, device):
+def test(model, test_loader, network):
+    IOU_THRESH = 0.5 # IoU score to count as true positive
+    CONF_THRESH = 0.9 # Confidence threshold below which predictions are ignored
     model.eval()
-
-    correct = 0
-    total = len(test_loader.dataset)
-
     with torch.no_grad():
         for (image, label) in test_loader:
-            image, label = image.to(device), label.to(device)
-            prediction = model(image)
-            correct += (prediction.argmax(1) == label).type(torch.float).sum().item()
-
-    print(f"Correct percentage: {(100*(correct/total)):>0.2f}%")
+            if network == "darknet":
+                outputs = model(image, CUDA=torch.cuda.is_available())
 
 def main():
     # Training settings
@@ -194,7 +189,7 @@ def main():
     print(loss)
 
     if args.test:
-        test(model, test_loader, device)
+        test(model, test_loader, device, args.network)
 
 if __name__ == "__main__":
     main()

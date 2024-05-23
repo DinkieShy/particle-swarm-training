@@ -246,6 +246,10 @@ def main():
         if run % RUNS_PER_ITERATION == 0:
             swarm.speed *= MOMENTUM
             swarm.initialiseSwarm(bestPosition, bestResult) # Initialise next set of particles based on all-time best result
+            for i in range(len(swarm.particles)):
+                swarm.particles[i].results.append(bestResult)
+                swarm.particles[i].positions.append(bestPosition)
+                swarm.particles[i].setRandomPosition()
         
         with open("./swarmResult.json", "w") as file:
             file.write(dumps(results, indent=2))

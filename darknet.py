@@ -47,9 +47,9 @@ def computeLoss(outputs, targets, model):
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
-		normaliseWH = torch.tensor(list(outputs[yoloLayer].shape)[2:4], device=device)
+		normaliseWH = torch.tensor([1,1] + list(outputs[yoloLayer].shape)[2:4], device=device)
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
-			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*(transformedAnchors[anchor]/normaliseWH)
+			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*transformedAnchors[anchor]
 		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
 		objTarget = torch.zeros_like(outputs[yoloLayer][...,4], device=device) # Targets for objectness score, should be 0 for any cells not containing a target
 		for batch in range(len(clsTarget[yoloLayer])):
@@ -70,11 +70,11 @@ def computeLoss(outputs, targets, model):
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
-				bboxTarget[yoloLayer][batch][target][2:4] = bboxTarget[yoloLayer][batch][target][2:4] / normaliseWH
+				bboxTarget[yoloLayer][batch][target][:4] = bboxTarget[yoloLayer][batch][target][:4] / normaliseWH
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4]/normaliseWH, (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
@@ -195,7 +195,7 @@ class Darknet(nn.Module):
 		y, x = torch.meshgrid([torch.arange(ySize), torch.arange(xSize)], indexing="ij")
 		return torch.stack((x, y), 2).view((1, 1, ySize, xSize, 2)).float().to(device)
 
-	def forward(self, x, target=None, CUDA=True):
+	def forward(self, x, CUDA=True):
 		outputs = {} # Store feature maps for route layers later
 		self.yoloOutputs = []
 		self.anchorGroups = []
