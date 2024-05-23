@@ -129,6 +129,10 @@ def main():
                         help="clip gradients to x during training (default 0.5)")
     parser.add_argument("--log", type=bool, default=False,
                         help="output training losses to ./trainingLog.txt (default False)")
+    parser.add_argument("--save", type=str, default="", metavar="file path",
+                        help="Set to filename of path to save weights to. Leave blank to not save weights")
+    parser.add_argument("--load", type=str, default="", metavar="file path",
+                        help="Set to filename of path to load weights from. Leave blank to not load weights")
     args = parser.parse_args()
     use_cuda = torch.cuda.is_available()
 
@@ -155,13 +159,12 @@ def main():
         image = F.normalize(image)
         return image, targets
 
-    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/train.txt", transform=transform)
+    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
     train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
     valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
     test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
 
-    lossAgent = None
     numClasses = 2
     if args.network == "darknet":
         cfgPath = os.path.abspath("./cfg/yolov3Custom.cfg")
@@ -171,6 +174,9 @@ def main():
         model = fasterrcnn_resnet50_fpn(weights=None, weights_backbone=None, num_classes=numClasses+1).to(device)
     elif args.network == "simplenet":
         model = Net().to(device)
+
+    if args.load != "":
+        model.load_state_dict(args.load)
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr)
 
@@ -187,6 +193,8 @@ def main():
                 i['lr'] = args.lr2
 
     print(loss)
+    if args.save != "":
+        torch.save(model.state_dict(), args.save)
 
     if args.test:
         test(model, test_loader, device, args.network)
