@@ -192,8 +192,8 @@ class Darknet(nn.Module):
 		self.yoloOutputs = []
 
 	def makeGrid(self, xSize, ySize, device="cpu"):
-		y, x = torch.meshgrid([torch.arange(ySize), torch.arange(xSize)], indexing="ij")
-		return torch.stack((x, y), 2).view((1, 1, ySize, xSize, 2)).float().to(device)
+		x, y = torch.meshgrid([torch.arange(xSize), torch.arange(ySize)], indexing="ij")
+		return torch.stack((x, y), 2).float().to(device)
 
 	def forward(self, x, CUDA=True):
 		outputs = {} # Store feature maps for route layers later
@@ -250,23 +250,21 @@ class Darknet(nn.Module):
 				anchors = self.moduleList[index][0].anchors
 				self.anchorGroups.append(anchors)
 				bboxAttributes = 5 + int(self.net_info["numClasses"])
-				batchSize, _, xSize, ySize = x.shape # X and Y wrong way round?
+				batchSize, _, xSize, ySize = x.shape
 				x = x.view(batchSize, len(anchors), bboxAttributes, xSize, ySize).permute(0, 1, 3, 4, 2).contiguous()
-				print(x.shape)
 				# Gets network output in the format [batchSize, anchor, xCoord, yCoord, objectness, class logits...]
 
 				if not self.training:
 					# Do inference, convert from YOLO coordinate space to image
 					stride = tuple([imageSize[i]/x.size(2+i) for i in range(2)])
-					if self.grid.shape[2] != xSize and self.grid.shape[3] != ySize:
-						print("reshaped grid")
+					if self.grid.shape[0] != xSize and self.grid.shape[1] != ySize:
 						self.grid = self.makeGrid(xSize, ySize, device=device)
-						print(self.grid.shape)
 					# Add grid to convert from offset to coords, multiply by stride to get coords in image space
 					x[..., 0] = (x[...,0] + self.grid[...,0]) * stride[0]
 					x[..., 1] = (x[...,1] + self.grid[...,1]) * stride[1]
 					# Multiply width/height by anchors
-					x[..., 2:4] = torch.exp(x[...,2:4]) * torch.tensor(list(chain(*anchors)),device=device).view(1, -1, 1, 1, 2)
+					anchorsTensor = torch.tensor(anchors, device=device).view(4, 1, 1, 2).unsqueeze(0)
+					x[...,2:4] = torch.exp(x[...,2:4]) * anchorsTensor
 					# Sigmoid logits
 					x[..., 4:] = x[..., 4:].sigmoid()
 					x = x.view(batchSize, -1, bboxAttributes)

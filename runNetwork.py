@@ -91,10 +91,14 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, device, network):
-    IOU_THRESH = 0.5 # IoU score to count as true positive
-    CONF_THRESH = 0.9 # Confidence threshold below which predictions are ignored
+def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=0.5):
+    print("Starting test")
+    # IOU_THRESH = IoU score to count as true positive
+    # CONF_THRESH = Confidence threshold below which predictions are ignored
     model.eval()
+    truePos = [0 for _ in range(numClasses)]
+    falsePos = [0 for _ in range(numClasses)]
+    falseNeg = [0 for _ in range(numClasses)]
     with torch.no_grad():
         for (dataBatch, targets) in tqdm(test_loader):
             data = dataBatch[0].unsqueeze(0)
@@ -104,6 +108,49 @@ def test(model, test_loader, device, network):
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
             if network == "darknet":
                 outputs = model(data, CUDA=torch.cuda.is_available())
+                # outputs is in shape [scale][batch size, detections, bboxAttributes]
+                detections = []
+                for scale in range(len(outputs)):
+                    # filter by objectness score above conf thresh
+                    for image in range(data.shape[0]):
+                        confInd = outputs[scale][image,:,4] >= CONF_THRESH
+                        if len(detections) <= image:
+                            detections.append(outputs[scale][image,confInd])
+                        else:
+                            detections[image] = torch.cat((detections[image], outputs[scale][image,confInd]))
+                for image in range(data.shape[0]):
+                    # convert to x1, y1, x2, y2, class
+                    predBoxes = torch.zeros_like(detections[image][...,:4], device=device)
+                    predBoxes[...,0:2] = detections[image][...,0:2] - detections[image][...,2:4]/2 # x, y -> x1, y1
+                    predBoxes[...,2:4] = detections[image][...,0:2] + detections[image][...,2:4]/2 # w, h -> x2, y2
+                    classes = torch.argmax(detections[image][...,5:], dim=-1)
+                    confidences = torch.cat((detections[image][...,4:5], detections[image][classes+5]), dim=1)
+                    detections[image] = torch.cat((predBoxes, classes.unsqueeze(1), confidences), dim=1) # This removes confidence scores
+                for image in range(data.shape[0]):
+                    shape = list(detections[image].shape)
+                    shape[-1] =2
+                    for box in range(len(targets[image]["boxes"])):
+                        targetBox = targets[image]["boxes"][box]
+                        intersects = torch.zeros(shape, device=device)
+                        invalidIntersects = 	torch.stack((detections[image][...,2] > targetBox[2], detections[image][...,0] < targetBox[0],
+                                                            detections[image][...,3] > targetBox[3], detections[image][...,1] < targetBox[1]),dim=-1)
+                        invalidIntersects = torch.any(invalidIntersects, -1)
+                        intersects[...,0] = torch.minimum(detections[image][...,2], targetBox[2])-torch.maximum(detections[image][...,0],targetBox[0])
+                        intersects[...,1] = torch.minimum(detections[image][...,3], targetBox[3])-torch.maximum(detections[image][...,1],targetBox[1])
+                        intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1) # This is now the intersection AREAS
+                        intersects[~invalidIntersects] = 0
+                        areas = (detections[image][...,2] - detections[image][...,0])*(detections[image][...,3] - detections[image][...,1])
+                        targetArea = (targetBox[2]-targetBox[0])*(targetBox[3]-targetBox[1])
+                        ious = intersects / (areas+targetArea-intersects)
+                        iouMatch = ious >= IOU_THRESH
+                        classMatch = detections[image][...,5] == targets[image]["labels"][box]-1
+                        if any(torch.logical_and(iouMatch,classMatch)):
+                            truePos[targets[image]["labels"][box]-1] += 1
+                        elif any(iouMatch):
+                            falsePos[targets[image]["labels"][box]-1] += 1
+                        else:
+                            falseNeg[targets[image]["labels"][box]-1] += 1
+    return truePos, falsePos, falseNeg
 
 def main():
     # Training settings
@@ -130,7 +177,7 @@ def main():
                         help='run on test set (default: False)')
     parser.add_argument("--network", type=str, default="darknet", metavar="network",
                         help="Network to use (default: \"darknet\")")
-    parser.add_argument("--grad-clip", type=float, default=0.5, metavar="x",
+    parser.add_argument("--grad-clip", type=float, default=1, metavar="x",
                         help="clip gradients to x during training (default 0.5)")
     parser.add_argument("--log", type=bool, default=False,
                         help="output training losses to ./trainingLog.txt (default False)")
@@ -164,7 +211,8 @@ def main():
         image = F.normalize(image)
         return image, targets
 
-    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
+    # trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
+    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
     train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
     valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
@@ -202,7 +250,11 @@ def main():
         torch.save(model.state_dict(), args.save)
 
     if args.test:
-        test(model, test_loader, device, args.network)
+        truePos, falsePos, falseNeg = test(model, test_loader, device, args.network, numClasses)
+        for label in range(numClasses):
+            precision = truePos[label] / (truePos[label]+falsePos[label])if truePos[label] > 0 or falsePos[label] > 0 else 0.0
+            recall = truePos[label] / (truePos[label] + falseNeg[label]) if truePos[label] > 0 or falseNeg[label] > 0 else 0.0
+            print(f"Label: {label}\t\tPrecision: {precision}, Recall: {recall}")
 
 if __name__ == "__main__":
     main()

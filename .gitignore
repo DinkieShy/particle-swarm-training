@@ -5,3 +5,5 @@ trainingLog.txt
 trainingGraph.png
 *.json
 swarmOutput/
+*.pt
+*.png
