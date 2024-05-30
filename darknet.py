@@ -27,7 +27,7 @@ def computeIOUs(output, targetBox):
 	intersects[...,0] = torch.minimum(boxPredictions[...,6], targetBoxCorners[2])-torch.maximum(boxPredictions[...,4],targetBoxCorners[0])
 	intersects[...,1] = torch.minimum(boxPredictions[...,7], targetBoxCorners[3])-torch.maximum(boxPredictions[...,5],targetBoxCorners[1])
 	intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1)
-	intersects[~invalidIntersects] = 0
+	intersects[invalidIntersects] = 0
 	ious = intersects / ((torch.prod(boxPredictions[...,2:4], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
 
 	return ious
@@ -43,7 +43,7 @@ def computeLoss(outputs, targets, model):
 	clsTarget, bboxTarget, anchors, transformedAnchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
-	bboxLossFunc = nn.MSELoss(reduction="mean")
+	bboxLossFunc = nn.MSELoss(reduction="sum")
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
@@ -70,11 +70,12 @@ def computeLoss(outputs, targets, model):
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
-				bboxTarget[yoloLayer][batch][target][:4] = bboxTarget[yoloLayer][batch][target][:4] / normaliseWH
+				# bboxTarget[yoloLayer][batch][target][:4] /= normaliseWH
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4]/normaliseWH, (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				# bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4]/normaliseWH, (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
@@ -87,8 +88,8 @@ def computeLoss(outputs, targets, model):
 
 	bboxLoss /= bboxLossAvgCount
 	clsLoss /= bboxLossAvgCount
-	bboxLoss *= 0.1
-	clsLoss *= 0.5
+	# bboxLoss *= 2
+	# clsLoss *= 0.5
 
 	bboxLoss /= len(outputs)
 	clsLoss /= len(outputs)

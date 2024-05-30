@@ -37,8 +37,8 @@ bboxAxBig.set_title("Bounding box loss (MSE)")
 bboxAxSmol.set_title("Bounding box loss (MSE)")
 clsAx.set_title("Classification loss (BCE)")
 objAx.set_title("Object Confidence loss (BCE)")
-bboxAxBig.set_ylim(0,10)
-bboxAxSmol.set_ylim(0,0.1)
+# bboxAxBig.set_ylim(0,100)
+bboxAxSmol.set_ylim(0,1)
 
 for epoch in range(maxEpoch+1):
     iterationsOffset = epoch*len(bboxLosses[0])
