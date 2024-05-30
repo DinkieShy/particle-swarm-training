@@ -43,11 +43,11 @@ def computeLoss(outputs, targets, model):
 	clsTarget, bboxTarget, anchors, transformedAnchors = buildTargets(outputs, targets, model, device=device)
 	clsLossFunc = nn.BCEWithLogitsLoss()
 	objLossFunc = nn.BCEWithLogitsLoss()
-	bboxLossFunc = nn.MSELoss(reduction="sum")
+	bboxLossFunc = nn.MSELoss(reduction="mean")
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
-		normaliseWH = torch.tensor([1,1] + list(outputs[yoloLayer].shape)[2:4], device=device)
+		# normaliseWH = torch.tensor([1,1] + list(outputs[yoloLayer].shape)[2:4], device=device)
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
 			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*transformedAnchors[anchor]
 		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
@@ -258,16 +258,16 @@ class Darknet(nn.Module):
 				if not self.training:
 					# Do inference, convert from YOLO coordinate space to image
 					stride = tuple([imageSize[i]/x.size(2+i) for i in range(2)])
-					if self.grid.shape[0] != xSize and self.grid.shape[1] != ySize:
+					if self.grid.shape[0] != xSize or self.grid.shape[1] != ySize:
 						self.grid = self.makeGrid(xSize, ySize, device=device)
 					# Add grid to convert from offset to coords, multiply by stride to get coords in image space
 					x[..., 0] = (x[...,0] + self.grid[...,0]) * stride[0]
 					x[..., 1] = (x[...,1] + self.grid[...,1]) * stride[1]
 					# Multiply width/height by anchors
-					anchorsTensor = torch.tensor(anchors, device=device).view(4, 1, 1, 2).unsqueeze(0)
+					anchorsTensor = torch.tensor(anchors, device=device).view(4,1,1,2)
 					x[...,2:4] = torch.exp(x[...,2:4]) * anchorsTensor
 					# Sigmoid logits
-					x[..., 4:] = x[..., 4:].sigmoid()
+					x[..., 4:] = torch.sigmoid(x[..., 4:])
 					x = x.view(batchSize, -1, bboxAttributes)
 
 				self.yoloOutputs.append(x)

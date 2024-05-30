@@ -92,7 +92,7 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=0.75, outputImage=False):
+def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=1.0, outputImage=False):
     print("Starting test")
     # IOU_THRESH = IoU score to count as true positive
     # CONF_THRESH = Confidence threshold below which predictions are ignored
@@ -151,11 +151,10 @@ def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_T
                             falsePos[targets[image]["labels"][box]-1] += 1
                         else:
                             falseNeg[targets[image]["labels"][box]-1] += 1
-                    if outputImage:
-                        drawnImage = draw_bounding_boxes((data[image]*255).byte(), detections[image][...,:4], colors="red")
-                        drawnImage = draw_bounding_boxes(drawnImage, targets[image]["boxes"], colors="yellow")
-                        name = hex(int(random.random()*131064))
-                        if detections[image][...,:4].shape[0] > 0:
+                    if outputImage and detections[image].shape[0] > 0:
+                            drawnImage = draw_bounding_boxes((data[image]*255).byte(), detections[image][...,:4], colors="red")
+                            drawnImage = draw_bounding_boxes(drawnImage, targets[image]["boxes"], colors="yellow")
+                            name = hex(int(random.random()*131064))
                             save_image(drawnImage.float()/255, f"./output/{name}.png")
     return truePos, falsePos, falseNeg
 
@@ -217,7 +216,7 @@ def main():
         if image.size != (800, 1216):
             image, targets["boxes"] = customTransforms.resize(image, targets["boxes"], (800,1216))
         image = transforms.ToTensor()(image)
-        image = F.normalize(image)
+        # image = F.normalize(image)
         return image, targets
 
     trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
@@ -225,10 +224,10 @@ def main():
     train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
     valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
-    val_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
+    val_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn)
 
     testDataset = AugmentedBeetDataset("/datasets/LincolnAugment/test.txt", transform=transform)
-    test_loader = torch.utils.data.DataLoader(testDataset, collate_fn=collate_fn, **train_kwargs)
+    test_loader = torch.utils.data.DataLoader(testDataset, collate_fn=collate_fn)
 
     numClasses = 2
     if args.network == "darknet":
