@@ -92,7 +92,7 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=1.0, outputImage=False):
+def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=0.95, outputImage=False):
     print("Starting test")
     # IOU_THRESH = IoU score to count as true positive
     # CONF_THRESH = Confidence threshold below which predictions are ignored
@@ -191,7 +191,7 @@ def main():
                         help="Set to filename of path to save weights to. Leave blank to not save weights")
     parser.add_argument("--load", type=str, default="", metavar="file path",
                         help="Set to filename of path to load weights from. Leave blank to not load weights")
-    parser.add_argument("--images", type=bool, default="", metavar="I",
+    parser.add_argument("--images", type=bool, default=False, metavar="I",
                         help="Save images during test")
     args = parser.parse_args()
     use_cuda = torch.cuda.is_available()
@@ -216,7 +216,7 @@ def main():
         if image.size != (800, 1216):
             image, targets["boxes"] = customTransforms.resize(image, targets["boxes"], (800,1216))
         image = transforms.ToTensor()(image)
-        # image = F.normalize(image)
+        image = F.normalize(image)
         return image, targets
 
     trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
@@ -264,6 +264,7 @@ def main():
         for label in range(numClasses):
             precision = truePos[label] / (truePos[label]+falsePos[label])if truePos[label] > 0 else 0.0
             recall = truePos[label] / (truePos[label] + falseNeg[label]) if truePos[label] > 0 else 0.0
+            print(truePos, falsePos, falseNeg)
             print(f"Label: {label}\t\tPrecision: {precision}, Recall: {recall}")
 
 if __name__ == "__main__":
