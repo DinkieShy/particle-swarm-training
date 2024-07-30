@@ -22,7 +22,7 @@ class NpEncoder(JSONEncoder):
 def runParticle(params, progBar=None):
     print("Running particle with params")
     print(params)
-    args = ["python", "runNetwork.py", "--training-batch", "3"]
+    args = ["python", "runNetwork.py"]
     for (key, value) in params.items():
         args.append(key)
         args.append(str(value))
@@ -39,6 +39,8 @@ def main():
     parser = ArgumentParser(description='Pytorch grid search test')
     parser.add_argument("--network", "-n", type=str, default="darknet", metavar="network",
                     help="Network to use (default: \"darknet\")")
+    parser.add_argument("--training-batch", type=int, default=3, metavar="B",
+                        help="input inputs to train at a time (default: 3)")
     args = parser.parse_args()
 
     MAX_THREADS = 1
@@ -90,7 +92,7 @@ def main():
             indexSet[-1] = 0
             particleSet = []
             for i in range(GRID_SIZE):
-                newParticle = {"--network": args.network}
+                newParticle = {"--network": args.network, "--epochs": 5, "--training-batch": args.training_batch}
                 for ii in range(len(dimensions)):
                     dim = list(dimensions.keys())[ii]
                     newParticle[dim] = grid[dim][indexSet[ii]]
