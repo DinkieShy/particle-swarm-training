@@ -20,6 +20,8 @@ class NpEncoder(JSONEncoder):
 
 
 def runParticle(params, progBar=None):
+    print("Running particle with params")
+    print(params)
     args = ["python", "runNetwork.py", "--training-batch", "3"]
     for (key, value) in params.items():
         args.append(key)
