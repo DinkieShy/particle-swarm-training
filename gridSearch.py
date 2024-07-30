@@ -4,6 +4,7 @@ from multiprocessing import Pool
 from sys import argv
 from json import dump, loads, JSONEncoder
 from os.path import exists
+from argparse import ArgumentParser
 
 
 class NpEncoder(JSONEncoder):
@@ -19,7 +20,7 @@ class NpEncoder(JSONEncoder):
 
 
 def runParticle(params, progBar=None):
-    args = ["python", "runNetwork.py"]
+    args = ["python", "runNetwork.py", "--training-batch", "3"]
     for (key, value) in params.items():
         args.append(key)
         args.append(str(value))
@@ -33,7 +34,12 @@ def runParticle(params, progBar=None):
 
 
 def main():
-    MAX_THREADS = 5
+    parser = ArgumentParser(description='Pytorch grid search test')
+    parser.add_argument("--network", "-n", type=str, default="darknet", metavar="network",
+                    help="Network to use (default: \"darknet\")")
+    args = parser.parse_args()
+
+    MAX_THREADS = 1
     GRID_SIZE = 5
 
     dimensions = {
@@ -82,7 +88,7 @@ def main():
             indexSet[-1] = 0
             particleSet = []
             for i in range(GRID_SIZE):
-                newParticle = {}
+                newParticle = {"--network": args.network}
                 for ii in range(len(dimensions)):
                     dim = list(dimensions.keys())[ii]
                     newParticle[dim] = grid[dim][indexSet[ii]]

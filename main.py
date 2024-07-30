@@ -153,7 +153,7 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--exe', type=str, default="python", metavar='file',
                     help='python executable to use (default: "python")')
-    parser.add_argument("--network", type=str, default="simplenet", metavar="network",
+    parser.add_argument("--network", "-n", type=str, default="simplenet", metavar="network",
                     help="Network to use (default: \"simplenet\")")
     args = parser.parse_args()
 
