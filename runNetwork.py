@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
+from torchvision.utils import draw_bounding_boxes, save_image
 from math import isfinite
 import os
 import random
@@ -91,7 +92,7 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             optimizer.zero_grad(set_to_none=True)
     return runningloss / len(train_loader)
 
-def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=0.5):
+def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_THRESH=0.95, outputImage=False):
     print("Starting test")
     # IOU_THRESH = IoU score to count as true positive
     # CONF_THRESH = Confidence threshold below which predictions are ignored
@@ -124,32 +125,37 @@ def test(model, test_loader, device, network, numClasses, IOU_THRESH=0.5, CONF_T
                     predBoxes[...,0:2] = detections[image][...,0:2] - detections[image][...,2:4]/2 # x, y -> x1, y1
                     predBoxes[...,2:4] = detections[image][...,0:2] + detections[image][...,2:4]/2 # w, h -> x2, y2
                     classes = torch.argmax(detections[image][...,5:], dim=-1)
-                    confidences = torch.cat((detections[image][...,4:5], detections[image][classes+5]), dim=1)
-                    detections[image] = torch.cat((predBoxes, classes.unsqueeze(1), confidences), dim=1) # This removes confidence scores
+                    confidences = torch.stack((detections[image][...,4], torch.max(detections[image][...,5:], dim=-1).values), dim=1)
+                    detections[image] = torch.cat((predBoxes, classes.unsqueeze(1), confidences), dim=-1) # This removes confidence scores
                 for image in range(data.shape[0]):
                     shape = list(detections[image].shape)
-                    shape[-1] =2
+                    shape[-1] = 2
                     for box in range(len(targets[image]["boxes"])):
                         targetBox = targets[image]["boxes"][box]
                         intersects = torch.zeros(shape, device=device)
-                        invalidIntersects = 	torch.stack((detections[image][...,2] > targetBox[2], detections[image][...,0] < targetBox[0],
-                                                            detections[image][...,3] > targetBox[3], detections[image][...,1] < targetBox[1]),dim=-1)
+                        invalidIntersects = 	torch.stack((detections[image][...,0] > targetBox[2], detections[image][...,2] < targetBox[0],
+                                                            detections[image][...,1] > targetBox[3], detections[image][...,3] < targetBox[1]),dim=-1)
                         invalidIntersects = torch.any(invalidIntersects, -1)
                         intersects[...,0] = torch.minimum(detections[image][...,2], targetBox[2])-torch.maximum(detections[image][...,0],targetBox[0])
                         intersects[...,1] = torch.minimum(detections[image][...,3], targetBox[3])-torch.maximum(detections[image][...,1],targetBox[1])
                         intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1) # This is now the intersection AREAS
-                        intersects[~invalidIntersects] = 0
+                        intersects[invalidIntersects] = 0
                         areas = (detections[image][...,2] - detections[image][...,0])*(detections[image][...,3] - detections[image][...,1])
                         targetArea = (targetBox[2]-targetBox[0])*(targetBox[3]-targetBox[1])
                         ious = intersects / (areas+targetArea-intersects)
                         iouMatch = ious >= IOU_THRESH
                         classMatch = detections[image][...,5] == targets[image]["labels"][box]-1
-                        if any(torch.logical_and(iouMatch,classMatch)):
+                        if torch.any(torch.logical_and(iouMatch, classMatch)):
                             truePos[targets[image]["labels"][box]-1] += 1
-                        elif any(iouMatch):
+                        elif torch.any(iouMatch):
                             falsePos[targets[image]["labels"][box]-1] += 1
                         else:
                             falseNeg[targets[image]["labels"][box]-1] += 1
+                    if outputImage and detections[image].shape[0] > 0:
+                            drawnImage = draw_bounding_boxes((data[image]*255).byte(), detections[image][...,:4], colors="red")
+                            drawnImage = draw_bounding_boxes(drawnImage, targets[image]["boxes"], colors="yellow")
+                            name = hex(int(random.random()*131064))
+                            save_image(drawnImage.float()/255, f"./output/{name}.png")
     return truePos, falsePos, falseNeg
 
 def main():
@@ -185,6 +191,8 @@ def main():
                         help="Set to filename of path to save weights to. Leave blank to not save weights")
     parser.add_argument("--load", type=str, default="", metavar="file path",
                         help="Set to filename of path to load weights from. Leave blank to not load weights")
+    parser.add_argument("--images", type=bool, default=False, metavar="I",
+                        help="Save images during test")
     args = parser.parse_args()
     use_cuda = torch.cuda.is_available()
 
@@ -211,12 +219,15 @@ def main():
         image = F.normalize(image)
         return image, targets
 
-    # trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
-    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
+    trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/trainNonAugment.txt", transform=transform)
+    # trainDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
     train_loader = torch.utils.data.DataLoader(trainDataset, collate_fn=collate_fn, **train_kwargs)
 
     valDataset = AugmentedBeetDataset("/datasets/LincolnAugment/val.txt", transform=transform)
-    test_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn, **train_kwargs)
+    val_loader = torch.utils.data.DataLoader(valDataset, collate_fn=collate_fn)
+
+    testDataset = AugmentedBeetDataset("/datasets/LincolnAugment/test.txt", transform=transform)
+    test_loader = torch.utils.data.DataLoader(testDataset, collate_fn=collate_fn)
 
     numClasses = 2
     if args.network == "darknet":
@@ -240,7 +251,6 @@ def main():
         loss = train(args.network, model, device, train_loader, optimizer, args.batch_size, epoch, args.grad_clip, args.log)
         if not isfinite(loss):
             break
-        # Log training loss to file (only use for testing; will break main.py)
         if epoch == args.lr_drop:
             for i in optimizer.param_groups:
                 i['lr'] = args.lr2
@@ -250,10 +260,11 @@ def main():
         torch.save(model.state_dict(), args.save)
 
     if args.test:
-        truePos, falsePos, falseNeg = test(model, test_loader, device, args.network, numClasses)
+        truePos, falsePos, falseNeg = test(model, test_loader, device, args.network, numClasses, outputImage=args.images)
         for label in range(numClasses):
-            precision = truePos[label] / (truePos[label]+falsePos[label])if truePos[label] > 0 or falsePos[label] > 0 else 0.0
-            recall = truePos[label] / (truePos[label] + falseNeg[label]) if truePos[label] > 0 or falseNeg[label] > 0 else 0.0
+            precision = truePos[label] / (truePos[label]+falsePos[label])if truePos[label] > 0 else 0.0
+            recall = truePos[label] / (truePos[label] + falseNeg[label]) if truePos[label] > 0 else 0.0
+            print(truePos, falsePos, falseNeg)
             print(f"Label: {label}\t\tPrecision: {precision}, Recall: {recall}")
 
 if __name__ == "__main__":

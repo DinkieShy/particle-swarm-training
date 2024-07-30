@@ -27,7 +27,7 @@ def computeIOUs(output, targetBox):
 	intersects[...,0] = torch.minimum(boxPredictions[...,6], targetBoxCorners[2])-torch.maximum(boxPredictions[...,4],targetBoxCorners[0])
 	intersects[...,1] = torch.minimum(boxPredictions[...,7], targetBoxCorners[3])-torch.maximum(boxPredictions[...,5],targetBoxCorners[1])
 	intersects = torch.prod(torch.clamp(intersects,min=0), dim=-1)
-	intersects[~invalidIntersects] = 0
+	intersects[invalidIntersects] = 0
 	ious = intersects / ((torch.prod(boxPredictions[...,2:4], dim=-1) + torch.prod(targetBox[2:4], dim=-1)) - intersects)
 
 	return ious
@@ -47,7 +47,7 @@ def computeLoss(outputs, targets, model):
 
 	for yoloLayer in range(len(outputs)):
 		outputs[yoloLayer][...,0:2] = outputs[yoloLayer][...,0:2].sigmoid()
-		normaliseWH = torch.tensor([1,1] + list(outputs[yoloLayer].shape)[2:4], device=device)
+		# normaliseWH = torch.tensor([1,1] + list(outputs[yoloLayer].shape)[2:4], device=device)
 		for anchor in range(len(model.anchorGroups[yoloLayer])):
 			outputs[yoloLayer][:,anchor,...,2:4] = outputs[yoloLayer][:,anchor,...,2:4].exp()*transformedAnchors[anchor]
 		mask = torch.ones_like(outputs[yoloLayer][...,0], device=device) # Mask of which cells incur Objectness loss
@@ -70,11 +70,12 @@ def computeLoss(outputs, targets, model):
 				ious = computeIOUs(outputs[yoloLayer][batch,anchor,...], bboxTarget[yoloLayer][batch][target])
 				mask[batch,anchor,ious > 0.5] = 0 # Ignore cells with IoU > 0.5
 
-				bboxTarget[yoloLayer][batch][target][:4] = bboxTarget[yoloLayer][batch][target][:4] / normaliseWH
+				# bboxTarget[yoloLayer][batch][target][:4] /= normaliseWH
 
 				objTarget[batch,anchor,targetX,targetY] = 1 # Cell should have predicted a target
 				clsLoss += clsLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,5:], clsTarget[yoloLayer][batch][target])
-				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4]/normaliseWH, (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				# bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4]/normaliseWH, (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
+				bboxLoss += bboxLossFunc(outputs[yoloLayer][batch,anchor,targetX,targetY,:4], (bboxTarget[yoloLayer][batch][target] - torch.tensor([targetX,targetY,0,0],device=device)))
 				bboxLossAvgCount += 1
 			for target in range(numTargets):
 				targetX, targetY = gridTargets[target][0], gridTargets[target][1]
@@ -87,8 +88,8 @@ def computeLoss(outputs, targets, model):
 
 	bboxLoss /= bboxLossAvgCount
 	clsLoss /= bboxLossAvgCount
-	bboxLoss *= 0.1
-	clsLoss *= 0.5
+	# bboxLoss *= 2
+	# clsLoss *= 0.5
 
 	bboxLoss /= len(outputs)
 	clsLoss /= len(outputs)
@@ -257,16 +258,16 @@ class Darknet(nn.Module):
 				if not self.training:
 					# Do inference, convert from YOLO coordinate space to image
 					stride = tuple([imageSize[i]/x.size(2+i) for i in range(2)])
-					if self.grid.shape[0] != xSize and self.grid.shape[1] != ySize:
+					if self.grid.shape[0] != xSize or self.grid.shape[1] != ySize:
 						self.grid = self.makeGrid(xSize, ySize, device=device)
 					# Add grid to convert from offset to coords, multiply by stride to get coords in image space
 					x[..., 0] = (x[...,0] + self.grid[...,0]) * stride[0]
 					x[..., 1] = (x[...,1] + self.grid[...,1]) * stride[1]
 					# Multiply width/height by anchors
-					anchorsTensor = torch.tensor(anchors, device=device).view(4, 1, 1, 2).unsqueeze(0)
+					anchorsTensor = torch.tensor(anchors, device=device).view(4,1,1,2)
 					x[...,2:4] = torch.exp(x[...,2:4]) * anchorsTensor
 					# Sigmoid logits
-					x[..., 4:] = x[..., 4:].sigmoid()
+					x[..., 4:] = torch.sigmoid(x[..., 4:])
 					x = x.view(batchSize, -1, bboxAttributes)
 
 				self.yoloOutputs.append(x)
