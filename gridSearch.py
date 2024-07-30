@@ -1,9 +1,10 @@
 import numpy as np
 import subprocess
-from multiprocessing import Pool, TimeoutError, Process
-from sys import float_info, argv
+from multiprocessing import Pool
+from sys import argv
 from json import dump, loads, JSONEncoder
 from os.path import exists
+
 
 class NpEncoder(JSONEncoder):
     # FROM https://bobbyhadz.com/blog/python-typeerror-object-of-type-int64-is-not-json-serializable
@@ -16,7 +17,8 @@ class NpEncoder(JSONEncoder):
             return obj.tolist()
         return JSONEncoder.default(self, obj)
 
-def runParticle(params, progBar = None):
+
+def runParticle(params, progBar=None):
     args = ["python", "runNetwork.py"]
     for (key, value) in params.items():
         args.append(key)
@@ -28,6 +30,7 @@ def runParticle(params, progBar = None):
     assert output.stderr == b'', f"Error from subprocess: {output.stderr}"
     result = float(output.stdout)
     return [result, params]
+
 
 def main():
     MAX_THREADS = 5
@@ -41,14 +44,15 @@ def main():
         "--decay": (0.00001, 0.0001),
     }
 
-    MAX_RUNS = GRID_SIZE**len(dimensions)
+    # MAX_RUNS = GRID_SIZE**len(dimensions)
 
     grid = {}
     for i in dimensions:
         topBound = float(dimensions[i][1])
         botBound = float(dimensions[i][0])
 
-        grid[i] = [ii for ii in list(np.linspace(botBound, topBound, num=GRID_SIZE, dtype=(int if isinstance(dimensions[i][1], (int)) else None)))]
+        grid[i] = [ii for ii in list(np.linspace(botBound, topBound, num=GRID_SIZE,
+                                                 dtype=(int if isinstance(dimensions[i][1], (int)) else None)))]
 
     results = []
     indexSet = [0, 0, 0, 0, 0]
@@ -57,13 +61,13 @@ def main():
             lines = file.readlines()
             lastResult = loads(lines[-1])
             indexSet = [grid[dim].index(lastResult["position"][dim]) for dim in dimensions]
-            if indexSet[-1] == GRID_SIZE-1:
+            if indexSet[-1] == GRID_SIZE - 1:
                 indexSet[-2] += 1
                 indexSet[-1] = 0
-                for ii in range(len(indexSet)-2, 0, -1):
-                    if(indexSet[ii] >= GRID_SIZE):
+                for ii in range(len(indexSet) - 2, 0, -1):
+                    if indexSet[ii] >= GRID_SIZE:
                         indexSet[ii] -= GRID_SIZE
-                        indexSet[ii-1] += 1
+                        indexSet[ii - 1] += 1
 
     elif not exists("./result.json"):
         with open('result.json', 'w') as file:
@@ -98,10 +102,11 @@ def main():
                     file.write("\n")
 
             indexSet[-2] += 1
-            for ii in range(len(indexSet)-2, 0, -1):
-                if(indexSet[ii] >= GRID_SIZE):
+            for ii in range(len(indexSet) - 2, 0, -1):
+                if indexSet[ii] >= GRID_SIZE:
                     indexSet[ii] -= GRID_SIZE
-                    indexSet[ii-1] += 1
+                    indexSet[ii - 1] += 1
+
 
 if __name__ == "__main__":
     main()
