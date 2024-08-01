@@ -50,8 +50,8 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
     model.train() 
     runningloss = 0
     optimizer.zero_grad()
-    for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
-    # for itr, (dataBatch, targets) in enumerate(train_loader):
+    # for itr, (dataBatch, targets) in enumerate(pbar := tqdm(train_loader)):
+    for itr, (dataBatch, targets) in enumerate(train_loader):
         data = dataBatch[0].unsqueeze(0)
         for i in range(1, len(dataBatch)):
             data = torch.cat((data, dataBatch[i].unsqueeze(0)), dim=0)
@@ -65,14 +65,14 @@ def train(network, model, device, train_loader, optimizer, batchSize, epoch, gra
             if not isfinite(loss.item()):
                 return loss.item()
             runningloss += loss.item()
-            pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
+            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
             if log:
                 with open("./trainingLog.txt", "a") as f:
                     f.write(f"{epoch}: ({losses[0].item()},{losses[1].item()},{losses[2].item()})\n")
                     f.close()
         elif network == "fasterrcnn":
             loss = model(data, targets)
-            pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
+            # pbar.set_postfix({'loss': f"{(runningloss/(itr+1)):0.4f}"})
             # pbar.set_postfix({'loss': f"{loss.item():0.4f}"})
             if log:
                 with open("./trainingLog.txt", "a") as f:
@@ -193,6 +193,8 @@ def main():
                         help="Set to filename of path to load weights from. Leave blank to not load weights")
     parser.add_argument("--images", type=bool, default=False, metavar="I",
                         help="Save images during test")
+    parser.add_argument('--exe', type=str, default="python", metavar='file',
+                    help='python executable to use (default: "python")')
     args = parser.parse_args()
     use_cuda = torch.cuda.is_available()
 
@@ -255,7 +257,7 @@ def main():
             for i in optimizer.param_groups:
                 i['lr'] = args.lr2
 
-    # print(loss)
+    print(loss)
     if args.save != "":
         torch.save(model.state_dict(), args.save)
 
