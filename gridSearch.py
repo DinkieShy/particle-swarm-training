@@ -118,7 +118,7 @@ def main():
 
                 with open("./result.json", "a") as file:
                     dump(result, file, cls=NpEncoder)
-                    file.write("\n")
+                    file.write(",\n")
 
             indexSet[-2] += 1
             for ii in range(len(indexSet) - 2, 0, -1):
