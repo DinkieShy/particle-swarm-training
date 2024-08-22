@@ -69,7 +69,7 @@ def main():
     results = []
     indexSet = [0, 0, 0, 0, 0]
     if "-r" in argv and exists("./result.json"):
-        with open('result.json', 'r') as file:
+        with open('./result.json', 'r') as file:
             lines = file.readlines()
             lastResult = loads(lines[-1])
             indexSet = [grid[dim].index(lastResult["position"][dim]) for dim in dimensions]
@@ -85,7 +85,14 @@ def main():
         with open('result.json', 'w') as file:
             file.write("[\n")
     else:
-        assert False, "Results file found, use -r flag to append to file or rename/remove ./results.json"
+        with open('./result.json', 'r') as file:
+            lineCount = len(file.readlines())
+            file.close()
+        assert lineCount < 2, "Results file found, use -r flag to append to file or rename/remove ./results.json"
+        with open('./result.json', 'w') as file:
+            file.write("[\n")
+            file.close()
+        
 
     print("Begin")
 
